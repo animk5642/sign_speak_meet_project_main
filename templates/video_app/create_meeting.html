@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Meeting - SignSpeak Meet{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow fade-in">
+                <div class="card-header bg-primary text-white text-center py-4">
+                    <h3 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Create New Meeting</h3>
+                    <p class="mb-0 mt-2">Set up your inclusive video conference</p>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5 class="text-primary"><i class="fas fa-info-circle me-2"></i>Meeting Details</h5>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12 mb-3">
+                                <label class="form-label fw-bold">Meeting Title</label>
+                                {{ form.title }}
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12 mb-3">
+                                <label class="form-label fw-bold">Description (Optional)</label>
+                                {{ form.description }}
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5 class="text-primary"><i class="fas fa-cog me-2"></i>Meeting Settings</h5>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="recordingEnabled" checked>
+                                    <label class="form-check-label" for="recordingEnabled">
+                                        <i class="fas fa-record-vinyl me-2"></i>Enable Recording
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="chatEnabled" checked>
+                                    <label class="form-check-label" for="chatEnabled">
+                                        <i class="fas fa-comments me-2"></i>Enable Chat
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="screenShareEnabled" checked>
+                                    <label class="form-check-label" for="screenShareEnabled">
+                                        <i class="fas fa-desktop me-2"></i>Enable Screen Share
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Accessibility Features:</strong> All meetings include automatic sign language detection, 
+                            real-time captions, and multilingual translation by default.
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-rocket me-2"></i>Create Meeting
+                            </button>
+                            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Quick Start Card -->
+            <div class="card mt-4 fade-in" style="animation-delay: 0.2s;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Quick Start</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Start a meeting immediately with default settings:</p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="quick_start" value="true">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-play me-2"></i>Start Instant Meeting
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}Phone Login - SignSpeak Meet{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow fade-in">
+                <div class="card-header bg-info text-white text-center py-4">
+                    <h3 class="mb-0"><i class="fas fa-phone me-2"></i>Phone Login</h3>
+                    <p class="mb-0 mt-2">Sign in with your phone number</p>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="mb-4">
+                            <label for="phone_number" class="form-label fw-bold">Phone Number</label>
+                            <input type="tel" class="form-control" id="phone_number" name="phone_number" 
+                                   placeholder="Enter your phone number" required>
+                            <div class="form-text">We'll send a verification code to this number.</div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-info btn-lg">
+                                <i class="fas fa-mobile-alt me-2"></i>Send Verification Code
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr class="my-4">
+
+                    <div class="text-center">
+                        <p class="mb-0">Prefer to use email? 
+                            <a href="{% url 'login' %}" class="text-decoration-none fw-bold">Sign In with Email</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h6><i class="fas fa-shield-alt me-2 text-info"></i>Secure Phone Verification</h6>
+                        <p class="small text-muted mb-0">Your phone number is verified securely and never shared.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
