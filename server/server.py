@@ -97,6 +97,7 @@ print(f"{'='*60}")
 
 # VAD Configuration
 VAD_THRESHOLD = 0.3
+VAD_THRESHOLD_INDIC = 0.4     # Stricter for pure Indic — reduces false speech detections
 MIN_SPEECH_DURATION = 0.3
 
 # =========================
@@ -106,7 +107,7 @@ MIN_SPEECH_DURATION = 0.3
 LANGUAGE_CONFIG = {
     "ml": {
         "whisper_lang": "ml",
-        "prompt": "ഇത് മലയാളം ഭാഷയിലുള്ള സംഭാഷണമാണ്. മലയാളത്തിൽ സംസാരിക്കുന്നു. കേരളത്തിലെ ആളുകൾ സംസാരിക്കുന്ന ഭാഷ.",
+        "prompt": "മലയാളത്തിൽ ദൈനംദിന സംഭാഷണം. രണ്ടു പേർ തമ്മിൽ സംസാരിക്കുന്നു. വീഡിയോ കോൺഫറൻസ് മീറ്റിംഗ്.",
         "nllb_code": "mal_Mlym",
         "description": "Malayalam"
     },
@@ -215,7 +216,7 @@ WHISPER_TO_NLLB = {
 # VOICE ACTIVITY DETECTION
 # =========================
 
-def check_speech_activity(audio_path: str) -> Tuple[bool, float]:
+def check_speech_activity(audio_path: str, vad_threshold: float = VAD_THRESHOLD) -> Tuple[bool, float]:
     """Check if audio contains actual speech using Silero VAD."""
     try:
         audio_data, sample_rate = sf.read(audio_path)
@@ -236,7 +237,7 @@ def check_speech_activity(audio_path: str) -> Tuple[bool, float]:
             audio_tensor,
             vad_model,
             sampling_rate=sample_rate,
-            threshold=VAD_THRESHOLD,
+            threshold=vad_threshold,
             min_speech_duration_ms=int(MIN_SPEECH_DURATION * 1000),
             return_seconds=True
         )
@@ -246,7 +247,7 @@ def check_speech_activity(audio_path: str) -> Tuple[bool, float]:
         speech_ratio = speech_duration / total_duration if total_duration > 0 else 0
         has_speech = len(speech_timestamps) > 0 and speech_duration >= MIN_SPEECH_DURATION
 
-        print(f"[VAD] Speech: {has_speech}, {speech_duration:.2f}s / {total_duration:.2f}s ({speech_ratio*100:.1f}%)")
+        print(f"[VAD] Speech: {has_speech}, {speech_duration:.2f}s / {total_duration:.2f}s ({speech_ratio*100:.1f}%) [thr={vad_threshold}]")
         return has_speech, speech_ratio
 
     except Exception as e:
@@ -410,6 +411,25 @@ HALLUCINATION_PATTERNS = [
     r"i want to tell you",
 ]
 
+# Malayalam-specific hallucination patterns
+# Whisper generates these common phrases when it can't decode Malayalam properly
+MALAYALAM_HALLUCINATION_PATTERNS = [
+    "ഗാനമാണ്",          # "is a song" — common hallucination
+    "മലയാള ഗാനം",       # "Malayalam song"
+    "സിനിമ",            # "cinema"
+    "സിനിമയിലെ",        # "in cinema"
+    "സൂക്ഷിക്കാം",       # "let's keep" — nonsense filler
+    "സിപ്പോക്ക്",        # nonsense word
+    "പാകമാകന്ന",        # hallucinated word
+    "ദൈവമേ",            # filler exclamation
+    "മനോഹരമായ ഒരു മലയാള",  # "beautiful Malayalam" — filler
+    "ഈ വീഡിയോ",          # "this video"
+    "സബ്സ്ക്രൈബ്",       # "subscribe"
+    "ലൈക്ക്",            # "like"
+    "ചാനൽ",             # "channel"
+    "ആദ്യമായി",          # filler
+]
+
 STANDALONE_HALLUCINATIONS = [
     "thank you", "thanks", "thank you.", "thanks.",
     "you", "you.", "okay", "okay.", "i don't know",
@@ -424,7 +444,7 @@ STANDALONE_HALLUCINATIONS = [
 ]
 
 
-def filter_hallucinations(text: str) -> str:
+def filter_hallucinations(text: str, language_mode: str = "") -> str:
     """Filter common Whisper hallucinations."""
     if not text:
         return ""
@@ -436,6 +456,13 @@ def filter_hallucinations(text: str) -> str:
         if re.search(pattern, text_lower, re.IGNORECASE):
             print(f"[FILTER] Blocked hallucination pattern: '{pattern}'")
             return ""
+
+    # Malayalam-specific hallucination check
+    if language_mode in ("ml", "ml-en", "ml-roman", "ml-via-en"):
+        for pattern in MALAYALAM_HALLUCINATION_PATTERNS:
+            if pattern in text:
+                print(f"[FILTER-ML] Blocked Malayalam hallucination: '{pattern}' in '{text[:60]}'")
+                return ""
 
     text_clean = text_lower.strip().rstrip('.').strip()
     for phrase in STANDALONE_HALLUCINATIONS:
@@ -462,11 +489,133 @@ def filter_hallucinations(text: str) -> str:
         print(f"[FILTER] Blocked Hindi repetition loop")
         return ""
 
+    # Malayalam repetition: check for repeated Malayalam word-groups
+    if language_mode == "ml":
+        ml_words = [w for w in text.split() if any('\u0D00' <= c <= '\u0D7F' for c in w)]
+        if len(ml_words) >= 6:
+            unique_ml = len(set(ml_words))
+            if unique_ml / len(ml_words) < 0.4:
+                print(f"[FILTER-ML] Blocked low-diversity Malayalam ({unique_ml}/{len(ml_words)} unique)")
+                return ""
+
     # Unicode-aware length check (Malayalam chars are multi-byte)
     if len(text.strip()) < 2:
         return ""
 
     return text
+
+
+# =========================
+# MIXED-LANGUAGE POST-PROCESSING
+# =========================
+
+def post_process_mixed_text(text: str) -> str:
+    """
+    Clean up mixed Malayalam+English Whisper output.
+    Removes common artifacts: repeated phrases, orphaned punctuation,
+    Whisper noise words, etc.
+    """
+    if not text:
+        return ""
+
+    text = text.strip()
+
+    # Remove repeated trailing/leading punctuation artifacts
+    text = re.sub(r'^[\s.,!?;:]+', '', text)
+    text = re.sub(r'[\s.,!?;:]+$', '', text)
+
+    # Remove Whisper noise tokens that slip through in mixed mode
+    noise_tokens = [
+        '...', '…', '♪', '♫', '🎵', '🎶',
+        '( )', '[ ]', '(( ))', '[[ ]]',
+    ]
+    for token in noise_tokens:
+        text = text.replace(token, '')
+
+    # Deduplicate: if the same phrase repeats 2+ times back-to-back, keep once
+    # Works for both Malayalam and English words
+    words = text.split()
+    if len(words) >= 4:
+        cleaned = []
+        i = 0
+        while i < len(words):
+            # Check for 1-3 word repeat patterns
+            found_repeat = False
+            for plen in range(1, min(4, len(words) - i)):
+                pattern = words[i:i+plen]
+                pat_str = ' '.join(pattern)
+                # Count consecutive repeats
+                repeats = 1
+                j = i + plen
+                while j + plen <= len(words) and words[j:j+plen] == pattern:
+                    repeats += 1
+                    j += plen
+                if repeats >= 2:
+                    # Keep pattern once, skip duplicates
+                    cleaned.extend(pattern)
+                    i = j
+                    found_repeat = True
+                    print(f"[POST-PROC] Deduplicated '{pat_str}' (repeated {repeats}x)")
+                    break
+            if not found_repeat:
+                cleaned.append(words[i])
+                i += 1
+        text = ' '.join(cleaned)
+
+    # Clean up multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
+
+def translate_mixed_text(text: str, target_nllb: str) -> str:
+    """
+    Smart translation for mixed Malayalam+English text.
+    Splits text into Malayalam and English chunks,
+    translates only Malayalam portions via NLLB,
+    preserves English portions as-is.
+    """
+    if not text or not target_nllb or not NLLB_AVAILABLE:
+        return ""
+
+    # If target is English, translate Malayalam portions to English
+    if target_nllb == "eng_Latn":
+        chunks = []
+        current_chunk = []
+        current_is_ml = None
+
+        for word in text.split():
+            # Check if word contains Malayalam script
+            has_ml = any('\u0D00' <= c <= '\u0D7F' for c in word)
+            if current_is_ml is None:
+                current_is_ml = has_ml
+            if has_ml != current_is_ml:
+                chunks.append((' '.join(current_chunk), current_is_ml))
+                current_chunk = [word]
+                current_is_ml = has_ml
+            else:
+                current_chunk.append(word)
+        if current_chunk:
+            chunks.append((' '.join(current_chunk), current_is_ml))
+
+        # Translate only Malayalam chunks
+        result_parts = []
+        for chunk_text, is_ml in chunks:
+            if is_ml and chunk_text.strip():
+                translated = translate_text(chunk_text, "mal_Mlym", "eng_Latn")
+                result_parts.append(translated if translated else chunk_text)
+            else:
+                result_parts.append(chunk_text)
+
+        return ' '.join(result_parts).strip()
+    else:
+        # For non-English targets, translate the whole thing
+        # First translate Malayalam parts to English, then English to target
+        # (NLLB handles eng -> target best)
+        english_version = translate_mixed_text(text, "eng_Latn")
+        if english_version and target_nllb != "eng_Latn":
+            return translate_text(english_version, "eng_Latn", target_nllb)
+        return english_version
 
 
 # =========================
@@ -497,8 +646,10 @@ async def transcribe(
         tmp_path = tmp.name
 
     try:
-        # Step 1: VAD
-        has_speech, speech_ratio = check_speech_activity(tmp_path)
+        # Step 1: VAD (stricter threshold for pure Indic languages)
+        is_pure_indic_mode = language_mode in ("ml", "hi", "ta", "te", "kn")
+        vad_thr = VAD_THRESHOLD_INDIC if is_pure_indic_mode else VAD_THRESHOLD
+        has_speech, speech_ratio = check_speech_activity(tmp_path, vad_threshold=vad_thr)
 
         if not has_speech:
             return {
@@ -553,16 +704,49 @@ async def transcribe(
             initial_prompt=prompt,
             verbose=False,
             without_timestamps=True,
-            compression_ratio_threshold=2.8 if is_low_resource else 1.8,
-            logprob_threshold=-1.0 if is_low_resource else -0.3,
-            no_speech_threshold=0.6 if is_low_resource else 0.4
+            compression_ratio_threshold=2.4 if is_pure_indic else (2.8 if is_low_resource else 1.8),
+            logprob_threshold=-0.7 if is_pure_indic else (-1.0 if is_low_resource else -0.3),
+            no_speech_threshold=0.5 if is_pure_indic else (0.6 if is_low_resource else 0.4)
         )
 
-        text = result.get("text", "").strip()
+        raw_text = result.get("text", "").strip()
         detected_lang = result.get("language", whisper_lang or "unknown")
 
+        # Step 2b: Segment-level confidence filtering
+        # Discard individual segments with very low avg_logprob
+        # Pure Indic: strict thresholds | Mixed (ml-en): relaxed thresholds
+        segments = result.get("segments", [])
+        is_mixed_mode = language_mode in ("ml-en", "hi-en")
+        if segments and (is_pure_indic or is_mixed_mode):
+            # Relaxed thresholds for mixed mode (ml-en works better, don't over-filter)
+            lp_threshold = -0.8 if is_pure_indic else -1.0
+            cr_threshold = 2.4 if is_pure_indic else 2.8
+            good_segments = []
+            for seg in segments:
+                avg_lp = seg.get("avg_logprob", 0)
+                seg_cr = seg.get("compression_ratio", 1.0)
+                seg_text = seg.get("text", "").strip()
+                no_speech = seg.get("no_speech_prob", 0)
+                if avg_lp < lp_threshold:
+                    print(f"[SEG-FILTER] Dropping low-confidence segment (avg_logprob={avg_lp:.2f}): {seg_text[:50]}")
+                elif seg_cr > cr_threshold:
+                    print(f"[SEG-FILTER] Dropping high-compression segment (cr={seg_cr:.2f}): {seg_text[:50]}")
+                elif no_speech > 0.8:
+                    print(f"[SEG-FILTER] Dropping high no_speech segment (prob={no_speech:.2f}): {seg_text[:50]}")
+                else:
+                    good_segments.append(seg_text)
+            text = " ".join(good_segments).strip()
+            if text != raw_text:
+                print(f"[SEG-FILTER] Filtered: '{raw_text[:60]}' → '{text[:60]}'")
+        else:
+            text = raw_text
+
+        # Step 2c: Post-process mixed language output
+        if text and is_mixed_mode:
+            text = post_process_mixed_text(text)
+
         # Step 3: Hallucination filter
-        text = filter_hallucinations(text)
+        text = filter_hallucinations(text, language_mode=language_mode)
 
         # Step 3b: Script validation — for pure Indic modes (not mixed),
         # if the output is entirely Latin, it's a Whisper hallucination.
@@ -586,7 +770,7 @@ async def transcribe(
                 no_speech_threshold=0.7
             )
             retry_text = retry_result.get("text", "").strip()
-            retry_text = filter_hallucinations(retry_text)
+            retry_text = filter_hallucinations(retry_text, language_mode=language_mode)
             if retry_text and is_target_script(retry_text, language_mode):
                 text = retry_text
                 detected_lang = retry_result.get("language", whisper_lang or "unknown")
@@ -599,7 +783,7 @@ async def transcribe(
             # For mixed modes, don't suppress — allow both scripts
             pass
 
-        # Step 4: NLLB Translation
+        # Step 4: NLLB Translation (with smart mixed-language handling)
         translated_text = ""
         translation_time = 0.0
 
@@ -627,12 +811,18 @@ async def transcribe(
             if translated_text:
                 print(f"[TRANSLATE] → tgt({target_language}): {translated_text[:50]}")
         elif text and target_language:
-            # Determine source NLLB code from config or detected language
-            source_nllb = config.get("nllb_code") or WHISPER_TO_NLLB.get(detected_lang, "")
-            if source_nllb:
-                t_start = time.time()
-                translated_text = translate_text(text, source_nllb, target_language)
-                translation_time = round(time.time() - t_start, 3)
+            t_start = time.time()
+            if is_mixed_mode:
+                # Smart mixed-language translation:
+                # Split into ML/EN chunks, translate only the ML parts
+                translated_text = translate_mixed_text(text, target_language)
+                print(f"[SMART-TRANSLATE] Mixed '{text[:50]}' → '{translated_text[:50]}'")
+            else:
+                # Standard single-language translation
+                source_nllb = config.get("nllb_code") or WHISPER_TO_NLLB.get(detected_lang, "")
+                if source_nllb:
+                    translated_text = translate_text(text, source_nllb, target_language)
+            translation_time = round(time.time() - t_start, 3)
 
         processing_time = time.time() - start_time
 
