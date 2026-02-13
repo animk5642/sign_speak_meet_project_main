@@ -646,10 +646,17 @@ async def transcribe(
         tmp_path = tmp.name
 
     try:
-        # Step 1: VAD (stricter threshold for pure Indic languages)
-        is_pure_indic_mode = language_mode in ("ml", "hi", "ta", "te", "kn")
-        vad_thr = VAD_THRESHOLD_INDIC if is_pure_indic_mode else VAD_THRESHOLD
+        # Step 1: VAD (stricter threshold for all Indic languages including mixed modes)
+        is_indic_mode = language_mode in ("ml", "ml-en", "ml-roman", "ml-via-en", "hi", "hi-en", "ta", "te", "kn")
+        vad_thr = VAD_THRESHOLD_INDIC if is_indic_mode else VAD_THRESHOLD
         has_speech, speech_ratio = check_speech_activity(tmp_path, vad_threshold=vad_thr)
+
+        # Reject chunks with very little speech — mostly background noise
+        # that Whisper will hallucinate on
+        MIN_SPEECH_RATIO = 0.15  # At least 15% of the chunk must be speech
+        if has_speech and speech_ratio < MIN_SPEECH_RATIO:
+            print(f"[VAD] Speech ratio too low ({speech_ratio*100:.1f}% < {MIN_SPEECH_RATIO*100:.0f}%) — treating as noise")
+            has_speech = False
 
         if not has_speech:
             return {
