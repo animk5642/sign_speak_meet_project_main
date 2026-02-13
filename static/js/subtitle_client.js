@@ -683,12 +683,6 @@ class SubtitleUI {
   }
 
   buildSettingsHTML() {
-    // Build speak language options
-    let speakOptions = '';
-    for (const [name, code] of Object.entries(SUBTITLE_CONFIG.STT_LANGUAGES)) {
-      speakOptions += `<option value="${code}">${name}</option>`;
-    }
-
     // Build target language options
     let targetOptions = '';
     for (const [name, code] of Object.entries(SUBTITLE_CONFIG.TARGET_LANGUAGES)) {
@@ -703,10 +697,6 @@ class SubtitleUI {
                 </button>
             </div>
             <div class="subtitle-settings-body">
-                <div class="subtitle-setting-row">
-                    <label>I speak</label>
-                    <select id="subtitleSpeakLang">${speakOptions}</select>
-                </div>
                 <div class="subtitle-setting-row">
                     <label>Show subtitles in</label>
                     <select id="subtitleTargetLang">${targetOptions}</select>
@@ -737,19 +727,10 @@ class SubtitleUI {
   }
 
   bindControlEvents() {
-    const speakSel = document.getElementById('subtitleSpeakLang');
     const targetSel = document.getElementById('subtitleTargetLang');
     const modeSel = document.getElementById('subtitleChunkMode');
     const customRow = document.getElementById('subtitleCustomRow');
     const customDur = document.getElementById('subtitleCustomDuration');
-
-    if (speakSel) {
-      speakSel.addEventListener('change', () => {
-        const code = speakSel.value;
-        this.client.setSpeakLanguage(code);
-        this.updateBtnState(!!code);
-      });
-    }
 
     if (targetSel) {
       targetSel.addEventListener('change', () => {

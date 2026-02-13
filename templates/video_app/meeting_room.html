@@ -262,9 +262,23 @@
             </div>
 
             <div class="meeting-controls">
-                <div class="d-flex justify-content-center">
-                    <button id="audioBtn" class="control-btn secondary" onclick="app.toggleAudio()"><i
-                            class="fas fa-microphone"></i></button>
+                <div class="d-flex justify-content-center align-items-end">
+                    <div class="mic-lang-wrapper">
+                        <button id="audioBtn" class="control-btn secondary" onclick="app.toggleAudio()"><i
+                                class="fas fa-microphone"></i></button>
+                        <select id="micSpeakLang" class="mic-lang-select" title="Subtitle Language">
+                            <option value="">Off</option>
+                            <option value="en">EN</option>
+                            <option value="hi">HI</option>
+                            <option value="hi-en">HI-EN</option>
+                            <option value="ml">ML</option>
+                            <option value="ml-en">ML-EN</option>
+                            <option value="ta">TA</option>
+                            <option value="te">TE</option>
+                            <option value="kn">KN</option>
+                            <option value="auto">Auto</option>
+                        </select>
+                    </div>
                     <button id="videoBtn" class="control-btn secondary" onclick="app.toggleVideo()"><i
                             class="fas fa-video"></i></button>
                     <button id="signLanguageBtn" class="control-btn primary" onclick="app.toggleSignLanguage()"
@@ -380,10 +394,40 @@
         '{{ user.id }}',
         '{{ user.email }}'
     );
+    window.subtitleClient = subtitleClient;
     subtitleClient.connectWebSocket();
 
     const subtitleUI = new SubtitleUI(subtitleClient);
     subtitleUI.init();
+
+    // ── Mic Language Dropdown ────────────────────────────────────
+    const micSpeakLang = document.getElementById('micSpeakLang');
+    if (micSpeakLang) {
+        micSpeakLang.addEventListener('change', () => {
+            const lang = micSpeakLang.value;
+            subtitleClient.speakLang = lang;
+            subtitleClient.sendLanguagePrefs();
+
+            // Only start recording if mic is currently unmuted
+            subtitleClient.stopRecording();
+            if (lang && app.agora && app.agora.localTracks[0] && !app.agora.localTracks[0].muted) {
+                subtitleClient.startRecording();
+            }
+        });
+    }
+
+    // ── Link Mic Toggle to Subtitle Recording ───────────────────
+    const originalToggleAudio = app.toggleAudio.bind(app);
+    app.toggleAudio = function () {
+        originalToggleAudio();
+        const micEnabled = app.agora && app.agora.localTracks[0] && !app.agora.localTracks[0].muted;
+        const lang = micSpeakLang ? micSpeakLang.value : '';
+        if (micEnabled && lang) {
+            subtitleClient.startRecording();
+        } else {
+            subtitleClient.stopRecording();
+        }
+    };
 
     // Clean up on page unload
     window.addEventListener('beforeunload', () => {

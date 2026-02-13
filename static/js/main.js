@@ -472,10 +472,10 @@ class SignSpeakMeetApp {
         const btn = document.getElementById(id);
         const icon = btn.querySelector('i');
 
-        // STANDARD LOGIC (User Request):
-        // enabled=true (Unmuted/Live) -> Gray (secondary) + Normal Icon
-        // enabled=false (Muted/Standby) -> Red (danger) + Slash Icon
-        btn.className = `control-btn ${enabled ? 'secondary' : 'danger'}`;
+        // INVERTED UI (User Request):
+        // enabled=true (Unmuted/Live) -> Green (active) + Normal Icon
+        // enabled=false (Muted/Off) -> Gray (secondary) + Slash Icon
+        btn.className = `control-btn ${enabled ? 'active' : 'secondary'}`;
         icon.className = `fas ${enabled ? iconOn : iconOff}`;
 
         // Force repaint (mobile fix)
