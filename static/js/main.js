@@ -116,9 +116,10 @@ class AgoraRTCManager {
 
     toggleVideo() {
         if (this.localTracks[1]) {
-            const muted = this.localTracks[1].muted;
-            this.localTracks[1].setMuted(!muted);
-            return !this.localTracks[1].muted;
+            const wasMuted = this.localTracks[1].muted;
+            this.localTracks[1].setMuted(!wasMuted);
+            // wasMuted=true means we just unmuted → enabled=true
+            return wasMuted;
         }
         return false;
     }
@@ -127,12 +128,12 @@ class AgoraRTCManager {
         if (this.localTracks[0]) {
             const wasMuted = this.localTracks[0].muted;
             this.localTracks[0].setMuted(!wasMuted);
-            const nowMuted = this.localTracks[0].muted;
 
-            console.log(`🎤 Audio: was ${wasMuted ? 'muted' : 'unmuted'} → now ${nowMuted ? 'muted' : 'unmuted'}`);
+            // Compute from old state — setMuted is async so .muted is stale
+            const nowEnabled = wasMuted; // was muted → now enabled
+            console.log(`🎤 Audio: was ${wasMuted ? 'muted' : 'unmuted'} → now ${nowEnabled ? 'unmuted' : 'muted'}`);
 
-            // Return true if enabled (not muted), false if disabled (muted)
-            return !nowMuted;
+            return nowEnabled;
         }
         return false;
     }

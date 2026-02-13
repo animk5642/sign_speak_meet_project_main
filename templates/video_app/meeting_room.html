@@ -273,6 +273,8 @@
                             <option value="hi-en">HI-EN</option>
                             <option value="ml">ML</option>
                             <option value="ml-en">ML-EN</option>
+                            <option value="ml-roman">Manglish</option>
+                            <option value="ml-via-en">ML→EN</option>
                             <option value="ta">TA</option>
                             <option value="te">TE</option>
                             <option value="kn">KN</option>
@@ -408,9 +410,11 @@
             subtitleClient.speakLang = lang;
             subtitleClient.sendLanguagePrefs();
 
-            // Only start recording if mic is currently unmuted
+            // Check button state (synchronously set) instead of async .muted
             subtitleClient.stopRecording();
-            if (lang && app.agora && app.agora.localTracks[0] && !app.agora.localTracks[0].muted) {
+            const audioBtn = document.getElementById('audioBtn');
+            const micEnabled = audioBtn && audioBtn.classList.contains('active');
+            if (lang && micEnabled) {
                 subtitleClient.startRecording();
             }
         });
@@ -420,7 +424,10 @@
     const originalToggleAudio = app.toggleAudio.bind(app);
     app.toggleAudio = function () {
         originalToggleAudio();
-        const micEnabled = app.agora && app.agora.localTracks[0] && !app.agora.localTracks[0].muted;
+        // Check button state (set synchronously by updateBtn) instead of
+        // .muted which is async and still shows the OLD value
+        const audioBtn = document.getElementById('audioBtn');
+        const micEnabled = audioBtn && audioBtn.classList.contains('active');
         const lang = micSpeakLang ? micSpeakLang.value : '';
         if (micEnabled && lang) {
             subtitleClient.startRecording();

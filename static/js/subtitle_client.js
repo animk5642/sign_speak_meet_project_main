@@ -667,6 +667,25 @@ class SubtitleUI {
     subtitleBtn.innerHTML = '<i class="fas fa-closed-captioning"></i>';
     controlsBar.insertBefore(subtitleBtn, leaveBtn);
 
+    // Create floating mini status bar (audio level + progress + status)
+    const miniBar = document.createElement('div');
+    miniBar.id = 'subtitleMiniBar';
+    miniBar.className = 'subtitle-mini-bar';
+    miniBar.style.display = 'none';
+    miniBar.innerHTML = `
+      <div class="subtitle-mini-inner">
+        <span id="subtitleMiniStatus" class="subtitle-mini-status">Ready</span>
+        <div class="subtitle-mini-level-container">
+          <div id="subtitleMiniLevel" class="subtitle-mini-level"></div>
+        </div>
+        <div class="subtitle-mini-progress-container">
+          <div id="subtitleMiniProgress" class="subtitle-mini-progress"></div>
+        </div>
+      </div>
+    `;
+    const meetingControls = document.querySelector('.meeting-controls');
+    meetingControls.parentElement.insertBefore(miniBar, meetingControls);
+
     // Create the settings panel (hidden by default)
     const panel = document.createElement('div');
     panel.id = 'subtitleSettingsPanel';
@@ -675,7 +694,6 @@ class SubtitleUI {
     panel.innerHTML = this.buildSettingsHTML();
 
     // Insert above meeting controls
-    const meetingControls = document.querySelector('.meeting-controls');
     meetingControls.parentElement.insertBefore(panel, meetingControls);
 
     // Bind control events
@@ -761,20 +779,32 @@ class SubtitleUI {
     this.client.onStatus = (msg) => {
       const el = document.getElementById('subtitleStatus');
       if (el) el.textContent = msg;
+      const miniEl = document.getElementById('subtitleMiniStatus');
+      if (miniEl) miniEl.textContent = msg;
+
+      // Show/hide mini bar based on recording state
+      const miniBar = document.getElementById('subtitleMiniBar');
+      if (miniBar) {
+        const isActive = msg === 'Recording...' || msg === 'Processing...';
+        miniBar.style.display = isActive ? 'block' : 'none';
+      }
     };
 
     this.client.onAudioLevel = (rms) => {
+      const pct = Math.min(rms * 300, 100);
+      const color = pct > 60 ? '#f80' : '#0f0';
+
       const bar = document.getElementById('subtitleLevelBar');
-      if (bar) {
-        const pct = Math.min(rms * 300, 100);  // scale for visibility
-        bar.style.width = pct + '%';
-        bar.style.background = pct > 60 ? '#f80' : '#0f0';
-      }
+      if (bar) { bar.style.width = pct + '%'; bar.style.background = color; }
+      const miniBar = document.getElementById('subtitleMiniLevel');
+      if (miniBar) { miniBar.style.width = pct + '%'; miniBar.style.background = color; }
     };
 
     this.client.onProgress = (pct) => {
       const bar = document.getElementById('subtitleProgressBar');
       if (bar) bar.style.width = pct + '%';
+      const miniBar = document.getElementById('subtitleMiniProgress');
+      if (miniBar) miniBar.style.width = pct + '%';
     };
   }
 

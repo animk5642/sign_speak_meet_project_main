@@ -278,6 +278,73 @@
     margin-top: 8px;
 }
 
+/* ─── Floating Mini Status Bar ─────────────────── */
+
+.subtitle-mini-bar {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    width: 320px;
+    max-width: 80vw;
+}
+
+.subtitle-mini-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(15, 15, 15, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    padding: 6px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.subtitle-mini-status {
+    color: #8ab4f8;
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 60px;
+}
+
+.subtitle-mini-level-container {
+    flex: 1;
+    height: 4px;
+    background: #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 50px;
+}
+
+.subtitle-mini-level {
+    height: 100%;
+    width: 0%;
+    background: #0f0;
+    border-radius: 2px;
+    transition: width 0.1s linear;
+}
+
+.subtitle-mini-progress-container {
+    flex: 1;
+    height: 4px;
+    background: #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 50px;
+}
+
+.subtitle-mini-progress {
+    height: 100%;
+    width: 0%;
+    background: #f80;
+    border-radius: 2px;
+    transition: width 0.15s linear;
+}
+
 /* ─── Responsive ────────────────────────────────── */
 
 @media (max-width: 768px) {
