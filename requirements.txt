@@ -36,7 +36,22 @@ sqlparse==0.5.5
 tomli==2.4.0
 Twisted==25.5.0
 txaio==25.9.2
-typing_extensions==4.15.0
 urllib3==2.6.3
 whitenoise==6.6.0
 zope.interface==8.2
+
+# ===============================
+# ML Dependencies for Sign Language Recognition
+# ===============================
+tensorflow==2.13.0
+numpy==1.24.3
+opencv-python==4.8.1.78
+mediapipe==0.10.9
+protobuf==3.20.3
+pandas==2.0.3
+absl-py>=1.4.0
+flatbuffers>=2.0
+sounddevice>=0.4.6
+
+# typing_extensions - Compatible with both TensorFlow and other packages
+typing_extensions>=4.2.0,<4.6.0

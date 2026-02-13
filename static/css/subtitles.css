@@ -1,0 +1,234 @@
+/* ═══════════════════════════════════════════════════
+   Subtitle System Styles
+   ═══════════════════════════════════════════════════ */
+
+/* ─── Caption Overlay (bottom of video) ─────────── */
+
+.subtitle-caption-overlay {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    max-width: 800px;
+    z-index: 998;
+    display: none;
+    pointer-events: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.subtitle-captions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+}
+
+.subtitle-caption {
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(12px);
+    color: #fff;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    max-width: 100%;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.subtitle-caption.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.subtitle-caption.fading {
+    opacity: 0;
+    transform: translateY(-5px);
+}
+
+.subtitle-caption.self {
+    border-left: 3px solid #34a853;
+}
+
+.subtitle-caption.translated {
+    border-left: 3px solid #4285f4;
+}
+
+.subtitle-caption.original {
+    border-left: 3px solid #fbbc04;
+}
+
+.subtitle-speaker {
+    font-weight: 600;
+    color: #8ab4f8;
+    margin-right: 8px;
+    font-size: 0.85rem;
+}
+
+.subtitle-text {
+    color: #e8eaed;
+}
+
+/* ─── Settings Panel ────────────────────────────── */
+
+.subtitle-settings-panel {
+    position: fixed;
+    bottom: 95px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 0;
+    z-index: 1001;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    width: 360px;
+    max-width: 90vw;
+    animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.subtitle-settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #8ab4f8;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.subtitle-close-btn {
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.subtitle-close-btn:hover {
+    color: #fff;
+}
+
+.subtitle-settings-body {
+    padding: 14px 16px;
+}
+
+.subtitle-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 10px;
+}
+
+.subtitle-setting-row label {
+    color: #ccc;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    min-width: 110px;
+}
+
+.subtitle-setting-row select,
+.subtitle-setting-row input[type="number"] {
+    flex: 1;
+    background: #2a2a2a;
+    color: #e8eaed;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.subtitle-setting-row select:focus,
+.subtitle-setting-row input[type="number"]:focus {
+    border-color: #4285f4;
+}
+
+/* ─── Audio Level Bar ───────────────────────────── */
+
+.subtitle-level-bar-container {
+    flex: 1;
+    height: 6px;
+    background: #1a1a1a;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.subtitle-level-bar {
+    height: 100%;
+    width: 0%;
+    background: #0f0;
+    border-radius: 3px;
+    transition: width 0.1s linear;
+}
+
+/* ─── Progress Bar ──────────────────────────────── */
+
+.subtitle-progress-bar-container {
+    flex: 1;
+    height: 6px;
+    background: #1a1a1a;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.subtitle-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #f80;
+    border-radius: 3px;
+    transition: width 0.15s linear;
+}
+
+/* ─── Status ────────────────────────────────────── */
+
+.subtitle-status {
+    color: #888;
+    font-size: 0.75rem;
+    text-align: center;
+    margin-top: 6px;
+}
+
+/* ─── Responsive ────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .subtitle-caption-overlay {
+        width: 90%;
+        bottom: 90px;
+    }
+
+    .subtitle-settings-panel {
+        width: 95vw;
+        bottom: 85px;
+    }
+
+    .subtitle-caption {
+        font-size: 0.85rem;
+        padding: 6px 12px;
+    }
+}

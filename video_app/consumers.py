@@ -1,7 +1,16 @@
 import json
+import logging
+import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .models import MeetingRoom, MeetingParticipant, ChatMessage
+from .ml_service.sign_language_detector import SignLanguageDetectorPool
+from .ml_service.config import MODEL_PATH, TRAIN_CSV_PATH
+
+logger = logging.getLogger(__name__)
+
+# Global detector pool (shared across all connections)
+detector_pool = SignLanguageDetectorPool(str(MODEL_PATH), str(TRAIN_CSV_PATH))
 
 class MeetingConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -126,31 +135,120 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
 class SignLanguageConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket consumer for real-time sign language detection
+    Processes video frames and broadcasts predictions to all room participants
+    """
+    
     async def connect(self):
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_name = f'sign_language_{self.room_id}'
-        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        self.user_id = str(self.scope['user'].id)
+        
+        # Join room group
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+        
         await self.accept()
+        
+        # Get or create detector for this user
+        try:
+            await self.initialize_detector()
+            logger.info(f"Sign language detector initialized for user {self.user_id} in room {self.room_id}")
+        except Exception as e:
+            logger.error(f"Failed to initialize detector: {e}")
+            await self.close()
     
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        # Leave room group
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+        
+        # Clean up detector for this user
+        try:
+            await self.cleanup_detector()
+            logger.info(f"Sign language detector cleaned up for user {self.user_id}")
+        except Exception as e:
+            logger.error(f"Error during detector cleanup: {e}")
     
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'sign_language_data',
-                'sign_data': data['sign_data'],
-                'translated_text': data.get('translated_text', ''),
-                'username': self.scope['user'].email,
-            }
-        )
+        """
+        Receive video frame from client, process it, and broadcast results
+        """
+        try:
+            data = json.loads(text_data)
+            message_type = data.get('type')
+            
+            if message_type == 'video_frame':
+                # Process frame and get prediction
+                frame_data = data.get('frame')
+                prediction = await self.process_frame(frame_data)
+                
+                if prediction:
+                    # Broadcast prediction to all users in the room
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'sign_prediction',
+                            'user_id': self.user_id,
+                            'username': self.scope['user'].email,
+                            'sign': prediction['sign'],
+                            'confidence': prediction['confidence'],
+                        }
+                    )
+            
+            elif message_type == 'reset':
+                # Reset the detector sequence
+                await self.reset_detector()
+                
+            elif message_type == 'status':
+                # Send status update
+                await self.send(text_data=json.dumps({
+                    'type': 'status',
+                    'status': 'active',
+                    'user_id': self.user_id
+                }))
+                
+        except Exception as e:
+            logger.error(f"Error in receive: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Failed to process frame'
+            }))
     
-    async def sign_language_data(self, event):
+    async def sign_prediction(self, event):
+        """
+        Send prediction to WebSocket client
+        """
         await self.send(text_data=json.dumps({
-            'type': 'sign_language_data',
-            'sign_data': event['sign_data'],
-            'translated_text': event['translated_text'],
+            'type': 'sign_prediction',
+            'user_id': event['user_id'],
             'username': event['username'],
+            'sign': event['sign'],
+            'confidence': event['confidence'],
         }))
+    
+    @database_sync_to_async
+    def initialize_detector(self):
+        """Initialize detector in thread pool"""
+        detector_pool.get_detector(self.user_id)
+    
+    @database_sync_to_async
+    def cleanup_detector(self):
+        """Clean up detector in thread pool"""
+        detector_pool.remove_detector(self.user_id)
+    
+    @database_sync_to_async
+    def process_frame(self, frame_data):
+        """Process frame in thread pool to avoid blocking"""
+        detector = detector_pool.get_detector(self.user_id)
+        return detector.process_frame(frame_data)
+    
+    @database_sync_to_async
+    def reset_detector(self):
+        """Reset detector sequence in thread pool"""
+        detector_pool.reset_detector(self.user_id)

@@ -1,5 +1,6 @@
 import uuid
 import json
+import requests as http_requests
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -94,6 +95,7 @@ from agora_token_builder import RtcTokenBuilder
 
 AGORA_APP_ID = config('AGORA_APP_ID')
 AGORA_APP_CERTIFICATE = config('AGORA_APP_CERTIFICATE')
+HPC_SERVER_URL = config('HPC_SERVER_URL', default='http://192.168.200.75:8200')
 
 @login_required
 def meeting_room(request, room_id):
@@ -120,7 +122,9 @@ def meeting_room(request, room_id):
         'meeting': meeting,
         'pending_requests': pending_requests,
         'AGORA_APP_ID': AGORA_APP_ID,
+        'HPC_SERVER_URL': HPC_SERVER_URL,
     })
+
 
 def getToken(request):
     appId = AGORA_APP_ID
@@ -264,3 +268,96 @@ def delete_member(request):
         # Log other errors but don't crash
         print(f"Error deleting member: {e}")
         return JsonResponse({'error': str(e)}, status=400)
+
+
+# ─── HPC Proxy Views ──────────────────────────────────────────────
+# Browser cannot reach HPC directly, so Django proxies the requests.
+
+@csrf_exempt
+@login_required
+def proxy_transcribe(request):
+    """Proxy audio transcription to HPC server."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    try:
+        # Forward the uploaded file and form fields to HPC
+        files = {}
+        if 'file' in request.FILES:
+            uploaded = request.FILES['file']
+            files['file'] = (uploaded.name, uploaded.read(), uploaded.content_type)
+
+        data = {
+            'language_mode': request.POST.get('language_mode', 'en'),
+            'target_language': request.POST.get('target_language', ''),
+        }
+
+        resp = http_requests.post(
+            f'{HPC_SERVER_URL}/transcribe',
+            files=files,
+            data=data,
+            timeout=30,
+        )
+
+        return JsonResponse(resp.json(), status=resp.status_code)
+
+    except http_requests.exceptions.ConnectionError:
+        return JsonResponse({
+            'error': f'Cannot connect to HPC server at {HPC_SERVER_URL}',
+            'success': False,
+        }, status=502)
+    except http_requests.exceptions.Timeout:
+        return JsonResponse({
+            'error': 'HPC server timed out',
+            'success': False,
+        }, status=504)
+    except Exception as e:
+        return JsonResponse({'error': str(e), 'success': False}, status=500)
+
+
+@csrf_exempt
+@login_required
+def proxy_translate(request):
+    """Proxy text translation to HPC server."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    try:
+        data = {
+            'text': request.POST.get('text', ''),
+            'source_language': request.POST.get('source_language', ''),
+            'target_language': request.POST.get('target_language', ''),
+        }
+
+        resp = http_requests.post(
+            f'{HPC_SERVER_URL}/translate',
+            data=data,
+            timeout=15,
+        )
+
+        return JsonResponse(resp.json(), status=resp.status_code)
+
+    except http_requests.exceptions.ConnectionError:
+        return JsonResponse({
+            'error': f'Cannot connect to HPC server at {HPC_SERVER_URL}',
+            'success': False,
+        }, status=502)
+    except http_requests.exceptions.Timeout:
+        return JsonResponse({
+            'error': 'HPC server timed out',
+            'success': False,
+        }, status=504)
+    except Exception as e:
+        return JsonResponse({'error': str(e), 'success': False}, status=500)
+
+
+@csrf_exempt
+@login_required
+def proxy_hpc_health(request):
+    """Check HPC server health."""
+    try:
+        resp = http_requests.get(f'{HPC_SERVER_URL}/health', timeout=5)
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception:
+        return JsonResponse({'status': 'unreachable', 'success': False}, status=502)
+

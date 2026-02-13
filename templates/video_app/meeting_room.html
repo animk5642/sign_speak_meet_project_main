@@ -4,6 +4,7 @@
 {% block title %}{{ meeting.title }} - SignSpeak Meet{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/subtitles.css' %}">
 <style>
     .meeting-layout {
         height: 100vh;
@@ -160,6 +161,80 @@
     .control-btn.danger:hover {
         background: #f15b4c;
     }
+
+    .control-btn.primary {
+        background: #1a73e8;
+        color: white;
+    }
+
+    .control-btn.primary:hover {
+        background: #2b7de9;
+    }
+
+    .control-btn.active {
+        background: #34a853;
+        color: white;
+    }
+
+    /* Sign Language Display Overlay */
+    .sign-language-overlay {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        padding: 15px 20px;
+        max-width: 350px;
+        z-index: 999;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+        display: none;
+    }
+
+    .sign-language-overlay.active {
+        display: block;
+        animation: slideInRight 0.3s ease-out;
+    }
+
+    @keyframes slideInRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    .sign-prediction {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .sign-prediction:last-child {
+        border-bottom: none;
+    }
+
+    .sign-prediction .username {
+        font-size: 0.85rem;
+        color: #8ab4f8;
+        margin-bottom: 5px;
+    }
+
+    .sign-prediction .sign-text {
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #fff;
+        margin-bottom: 3px;
+    }
+
+    .sign-prediction .confidence {
+        font-size: 0.75rem;
+        color: #9aa0a6;
+    }
 </style>
 {% endblock %}
 
@@ -192,7 +267,22 @@
                             class="fas fa-microphone"></i></button>
                     <button id="videoBtn" class="control-btn secondary" onclick="app.toggleVideo()"><i
                             class="fas fa-video"></i></button>
+                    <button id="signLanguageBtn" class="control-btn primary" onclick="app.toggleSignLanguage()"
+                        title="Start Broadcasting Your Sign Language"><i class="fas fa-hands"></i></button>
                     <button class="control-btn danger" onclick="app.leave()"><i class="fas fa-phone-slash"></i></button>
+                </div>
+            </div>
+
+            <!-- Sign Language Detection Overlay - Live Captions for All Users -->
+            <div id="signLanguageOverlay" class="sign-language-overlay">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0 text-white"><i class="fas fa-closed-captioning me-2"></i>Live Sign Language</h6>
+                    <span class="badge bg-info">Captions</span>
+                </div>
+                <div id="signPredictions">
+                    <div class="text-muted text-center py-3">
+                        <small>No active signs...</small>
+                    </div>
                 </div>
             </div>
         </div>
@@ -271,6 +361,8 @@
 {% block extra_js %}
 <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 <script src="{% static 'js/main.js' %}"></script>
+<script src="{% static 'js/wav_encoder.js' %}"></script>
+<script src="{% static 'js/subtitle_client.js' %}"></script>
 <script>
     // Set sessionStorage variables for Agora client
     sessionStorage.setItem('room', '{{ meeting.room_id }}');
@@ -280,6 +372,24 @@
     const app = new SignSpeakApp('{{ AGORA_APP_ID }}', '{{ meeting.room_id }}', '{{ user.email }}');
     window.app = app;
     app.init();
+
+    // ── Subtitle System ──────────────────────────────────────────
+    const subtitleClient = new SubtitleClient(
+        '{{ meeting.room_id }}',
+        '{{ HPC_SERVER_URL }}',
+        '{{ user.id }}',
+        '{{ user.email }}'
+    );
+    subtitleClient.connectWebSocket();
+
+    const subtitleUI = new SubtitleUI(subtitleClient);
+    subtitleUI.init();
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+        subtitleClient.stopRecording();
+        subtitleClient.disconnectWebSocket();
+    });
 
     function sendMessage() {
         const input = document.getElementById('chatInput');

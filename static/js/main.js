@@ -292,6 +292,7 @@ class SignSpeakMeetApp {
         this.agora = null;
         this.chat = null;
         this.requests = null;
+        this.signLanguage = null;
         this.timerInterval = null;
         this.seconds = 0;
         this.participantNames = {};  // Store participant names by UID
@@ -321,7 +322,11 @@ class SignSpeakMeetApp {
         this.chat = new ChatManager(this.roomId, chatContainer, this.userEmail);
         this.chat.initialize();
 
-        // 3. Init Request Manager if host
+        // 3. Init Sign Language Manager - Pass the Agora manager to access video track
+        this.signLanguage = new SignLanguageManager(this.roomId, this.agora);
+        this.signLanguage.initialize();
+
+        // 4. Init Request Manager if host
         if (document.getElementById('pendingRequestsSection')) {
             this.requests = new JoinRequestManager(this.roomId, (req) => {
                 this.showNotification(`New join request: ${req.user_email}`, 'warning');
@@ -479,7 +484,30 @@ class SignSpeakMeetApp {
         btn.style.display = '';
     }
 
+    toggleSignLanguage() {
+        if (!this.signLanguage) return;
+
+        const btn = document.getElementById('signLanguageBtn');
+
+        if (this.signLanguage.isActive) {
+            this.signLanguage.stop();
+            btn.className = 'control-btn primary';
+            btn.querySelector('i').className = 'fas fa-hands';
+            this.showNotification('Sign language detection stopped', 'info');
+        } else {
+            this.signLanguage.start();
+            btn.className = 'control-btn active';
+            btn.querySelector('i').className = 'fas fa-hands';
+            this.showNotification('Sign language detection started', 'success');
+        }
+    }
+
     async leave() {
+        // Cleanup sign language
+        if (this.signLanguage) {
+            this.signLanguage.disconnect();
+        }
+
         await this.agora.stop();
         await this.deleteMember();
         window.location.href = '/';
@@ -523,3 +551,257 @@ window.SignSpeakApp = SignSpeakMeetApp;
 window.addEventListener("beforeunload", () => {
     if (window.app) window.app.deleteMember();
 });
+
+
+// Sign Language Manager
+class SignLanguageManager {
+    constructor(roomId, agoraManager) {
+        this.roomId = roomId;
+        this.agoraManager = agoraManager;  // Agora RTC manager to access video track
+        this.websocket = null;
+        this.isActive = false;
+        this.frameInterval = null;
+        this.predictions = new Map(); // Store predictions by userId
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.videoElement = null;  // Will create from Agora track
+    }
+
+    initialize() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/sign-language/${this.roomId}/`;
+
+        this.websocket = new WebSocket(wsUrl);
+
+        this.websocket.onopen = () => {
+            console.log('Sign language WebSocket connected');
+            this.sendStatus();
+        };
+
+        this.websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+        };
+
+        this.websocket.onerror = (error) => {
+            console.error('Sign language WebSocket error:', error);
+        };
+
+        this.websocket.onclose = () => {
+            console.log('Sign language WebSocket closed');
+        };
+    }
+
+    handleMessage(data) {
+        if (data.type === 'sign_prediction') {
+            // Show overlay for ALL users when ANY user has a prediction
+            const overlay = document.getElementById('signLanguageOverlay');
+            if (overlay && !overlay.classList.contains('active')) {
+                overlay.classList.add('active');
+            }
+
+            // Update prediction for this user
+            this.predictions.set(data.user_id, {
+                username: data.username,
+                sign: data.sign,
+                confidence: data.confidence,
+                timestamp: Date.now()
+            });
+
+            this.updateUI();
+
+            // Clear old predictions after 3 seconds (for real-time updates)
+            setTimeout(() => {
+                this.predictions.delete(data.user_id);
+                this.updateUI();
+
+                // Hide overlay if no more predictions
+                if (this.predictions.size === 0) {
+                    overlay.classList.remove('active');
+                }
+            }, 3000);
+        } else if (data.type === 'error') {
+            console.error('Sign language error:', data.message);
+        }
+    }
+
+    updateUI() {
+        const overlay = document.getElementById('signLanguageOverlay');
+        const predictionsDiv = document.getElementById('signPredictions');
+
+        if (this.predictions.size === 0) {
+            predictionsDiv.innerHTML = '<div class="text-muted text-center py-3"><small>No active signs...</small></div>';
+            // Auto-hide overlay when no predictions
+            if (overlay && !this.isActive) {
+                overlay.classList.remove('active');
+            }
+        } else {
+            const html = Array.from(this.predictions.entries()).map(([userId, pred]) => {
+                const confidencePercent = Math.round(pred.confidence * 100);
+                const confidenceColor = confidencePercent >= 80 ? '#4caf50' : confidencePercent >= 70 ? '#ff9800' : '#f44336';
+
+                return `
+                <div class="sign-prediction">
+                    <div class="username">${pred.username}</div>
+                    <div class="sign-text">${pred.sign}</div>
+                    <div class="confidence" style="color: ${confidenceColor}; font-weight: bold;">
+                        ${confidencePercent}% confident
+                    </div>
+                </div>
+            `}).join('');
+
+            predictionsDiv.innerHTML = html;
+
+            // Always show overlay when there are predictions
+            if (overlay) {
+                overlay.classList.add('active');
+            }
+        }
+    }
+
+    start() {
+        if (this.isActive || !this.websocket) return;
+
+        // Check if video track is available and not muted
+        const videoTrack = this.agoraManager?.localTracks?.[1];
+        if (!videoTrack) {
+            console.error('Cannot start sign language detection: No video track');
+            return;
+        }
+
+        if (videoTrack.muted) {
+            console.warn('Video is muted - enabling for sign language detection');
+            // Note: We can still try to capture, but frames might be black
+        }
+
+        this.isActive = true;
+
+        // Show overlay
+        const overlay = document.getElementById('signLanguageOverlay');
+        if (overlay) {
+            overlay.classList.add('active');
+        }
+
+        // Reset video element to get fresh track
+        if (this.videoElement) {
+            this.videoElement.srcObject = null;
+            this.videoElement = null;
+        }
+
+        // Start capturing and sending frames - REAL-TIME: 15 FPS for instant detection
+        this.frameInterval = setInterval(() => {
+            this.captureAndSendFrame();
+        }, 66);  // 66ms = ~15 FPS for real-time detection
+
+        console.log('Sign language detection started (15 FPS real-time mode)');
+    }
+
+    stop() {
+        if (!this.isActive) return;
+
+        this.isActive = false;
+
+        // Stop frame capture
+        if (this.frameInterval) {
+            clearInterval(this.frameInterval);
+            this.frameInterval = null;
+        }
+
+        // Clean up video element
+        if (this.videoElement) {
+            this.videoElement.srcObject = null;
+            this.videoElement = null;
+        }
+
+        // Don't hide overlay - other users might still be signing
+        // Overlay will auto-hide when all predictions clear
+
+        // Send reset message
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(JSON.stringify({ type: 'reset' }));
+        }
+
+        console.log('Sign language detection stopped');
+    }
+
+    captureAndSendFrame() {
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        try {
+            // Get the video track from Agora
+            const videoTrack = this.agoraManager?.localTracks?.[1];
+            if (!videoTrack) {
+                console.warn('No video track available for sign language detection');
+                return;
+            }
+
+            // Check if video track is muted - still capture but may be black frames
+            if (videoTrack.muted) {
+                console.log('Video track is muted - sign language detection may not work optimally');
+            }
+
+            // Create video element from Agora track if not exists
+            if (!this.videoElement) {
+                const mediaStreamTrack = videoTrack.getMediaStreamTrack();
+                if (!mediaStreamTrack) {
+                    console.warn('Could not get MediaStreamTrack from Agora');
+                    return;
+                }
+
+                // Create a video element to capture frames
+                this.videoElement = document.createElement('video');
+                this.videoElement.srcObject = new MediaStream([mediaStreamTrack]);
+                this.videoElement.autoplay = true;
+                this.videoElement.playsInline = true;
+                this.videoElement.muted = true;
+                this.videoElement.play().catch(err => console.error('Video play error:', err));
+
+                console.log('Created video element for sign language capture');
+            }
+
+            // Check if video is ready
+            if (this.videoElement.videoWidth === 0 || this.videoElement.videoHeight === 0) {
+                console.log('Video element not ready yet, dimensions:', this.videoElement.videoWidth, 'x', this.videoElement.videoHeight);
+                return; // Video not ready yet
+            }
+
+            // Set canvas size to video size (optimized: use lower resolution)
+            const targetWidth = 640;  // Reduced from full video width
+            const targetHeight = 480; // Reduced from full video height
+
+            this.canvas.width = targetWidth;
+            this.canvas.height = targetHeight;
+
+            // Draw current video frame to canvas (scaled down for faster processing)
+            this.ctx.drawImage(this.videoElement, 0, 0, targetWidth, targetHeight);
+
+            // Convert to base64 JPEG with optimized quality (0.6 = 60% quality for speed)
+            const frameData = this.canvas.toDataURL('image/jpeg', 0.6);
+
+            // Send to WebSocket
+            this.websocket.send(JSON.stringify({
+                type: 'video_frame',
+                frame: frameData
+            }));
+
+        } catch (error) {
+            console.error('Error capturing frame:', error);
+        }
+    }
+
+    sendStatus() {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(JSON.stringify({ type: 'status' }));
+        }
+    }
+
+    disconnect() {
+        this.stop();
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+        }
+    }
+}

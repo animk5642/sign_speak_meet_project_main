@@ -1,0 +1,85 @@
+# =============================================
+# BridgeMeet - Complete Requirements
+# =============================================
+
+# ── Django Web Framework ──────────────────────
+Django==4.2.7
+channels==4.0.0
+daphne==4.0.0
+channels-redis==4.2.0
+whitenoise==6.6.0
+
+# ── Django Auth & Forms ───────────────────────
+django-allauth==0.57.0
+django-crispy-forms==2.0
+crispy-bootstrap4==2022.1
+
+# ── Database ──────────────────────────────────
+psycopg2-binary==2.9.11
+
+# ── Agora WebRTC Token ────────────────────────
+agora_token_builder==1.0.0
+
+# ── HTTP & Security ──────────────────────────
+requests==2.32.5
+requests-oauthlib==2.0.0
+python-decouple==3.8
+certifi==2026.1.4
+PyJWT==2.10.1
+cryptography==46.0.4
+pyOpenSSL==25.3.0
+
+# ── ASGI / WebSocket ─────────────────────────
+asgiref==3.11.0
+Twisted==25.5.0
+autobahn==24.4.2
+txaio==25.9.2
+
+# ── Image Processing ─────────────────────────
+Pillow==10.0.1
+
+# ── Utilities ─────────────────────────────────
+sqlparse==0.5.5
+defusedxml==0.7.1
+python3-openid==3.2.0
+oauthlib==3.3.1
+
+# =============================================
+# ML Dependencies - Sign Language Recognition
+# (runs on Django server CPU)
+# =============================================
+tensorflow==2.13.0
+numpy==1.24.3
+opencv-python==4.8.1.78
+mediapipe==0.10.9
+pandas==2.0.3
+absl-py>=1.4.0
+flatbuffers>=2.0
+sounddevice>=0.4.6
+
+# =============================================
+# HPC Server Dependencies (server.py - Dockerfile)
+# These run ONLY on the GPU server, NOT on Django
+# Listed here for reference
+# =============================================
+# openai-whisper
+# torch (comes with Docker base image)
+# transformers==4.40.2
+# sentencepiece
+# sacremoses
+# protobuf
+# fastapi
+# uvicorn[standard]
+# python-multipart
+# soundfile
+# scipy
+
+# =============================================
+# Test GUI Dependencies (transcribe_gui_nllb.py)
+# Only needed on developer machine for testing
+# =============================================
+# PyQt6
+# sounddevice
+# soundfile
+# numpy
+# requests

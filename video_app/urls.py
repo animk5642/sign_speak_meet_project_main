@@ -14,4 +14,9 @@ urlpatterns = [
     path('get_member/', views.get_member),
     path('delete_member/', views.delete_member),
     path('get_token/', views.getToken),
+
+    # HPC proxy endpoints (browser → Django → HPC)
+    path('proxy/transcribe/', views.proxy_transcribe, name='proxy_transcribe'),
+    path('proxy/translate/', views.proxy_translate, name='proxy_translate'),
+    path('proxy/health/', views.proxy_hpc_health, name='proxy_hpc_health'),
 ]
