@@ -47,9 +47,23 @@ app.add_middleware(
 # CONFIGURATION
 # ==============================================================================
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HF_TOKEN = os.environ.get("HF_TOKEN", None)
 API_KEY = os.environ.get("API_KEY", "")
+
+# --- GPU Allocation ---
+# If multiple GPUs are available, split the load.
+# GPU 0: Whisper (International + English)
+# GPU 1: IndicConformer + IndicTrans2 (Indian Languages)
+if torch.cuda.device_count() > 1:
+    DEVICE_WHISPER = "cuda:0"
+    DEVICE_INDIC = "cuda:1"
+    DEVICE_NLLB = "cuda:0" # Put NLLB with Whisper or distribute as needed
+    logger.info(f"Multi-GPU Mode: Whisper/NLLB on {DEVICE_WHISPER}, Indic models on {DEVICE_INDIC}")
+else:
+    DEVICE_WHISPER = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE_INDIC = DEVICE_WHISPER
+    DEVICE_NLLB = DEVICE_WHISPER
+    logger.info(f"Single Device Mode: All models on {DEVICE_WHISPER}")
 
 # --- Model Names ---
 # Indic STT
@@ -64,7 +78,7 @@ IT2_INDIC_INDIC = "ai4bharat/indictrans2-indic-indic-1B"
 WHISPER_MODEL_NAME = "large-v3"
 
 logger.info("=" * 60)
-logger.info(f"Universal Translator Server starting on {DEVICE}")
+logger.info(f"Universal Translator Server starting")
 logger.info(f"HF Token present: {HF_TOKEN is not None}")
 logger.info("=" * 60)
 
@@ -79,8 +93,8 @@ try:
     logger.info(f"[WHISPER] Loading {WHISPER_MODEL_NAME}...")
     # Whisper loads entire model to GPU if device='cuda'
     # For concurrent usage with other large models, might need careful VRAM management
-    whisper_model = whisper.load_model(WHISPER_MODEL_NAME, device=DEVICE)
-    logger.info(f"[WHISPER] Loaded ✓")
+    whisper_model = whisper.load_model(WHISPER_MODEL_NAME, device=DEVICE_WHISPER)
+    logger.info(f"[WHISPER] Loaded on {DEVICE_WHISPER} ✓")
 except Exception as e:
     logger.error(f"[WHISPER] Failed to load: {e}")
     traceback.print_exc()
@@ -95,9 +109,9 @@ try:
     logger.info(f"[INDIC-STT] Loading {IC_MODEL_NAME}...")
     ic_model = AutoModel.from_pretrained(
         IC_MODEL_NAME, token=HF_TOKEN, trust_remote_code=True
-    ).to(DEVICE)
+    ).to(DEVICE_INDIC)
     ic_model.eval()
-    logger.info(f"[INDIC-STT] Loaded ✓")
+    logger.info(f"[INDIC-STT] Loaded on {DEVICE_INDIC} ✓")
 except Exception as e:
     logger.error(f"[INDIC-STT] Failed to load: {e}")
     traceback.print_exc()
@@ -133,8 +147,8 @@ def load_it2_model(key: str, model_name: str):
             model_name,
             trust_remote_code=True,
             token=HF_TOKEN,
-            torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
-        ).to(DEVICE)
+            torch_dtype=torch.float16 if "cuda" in DEVICE_INDIC else torch.float32,
+        ).to(DEVICE_INDIC)
         mdl.eval()
         it2_tokenizers[key] = tok
         it2_models[key] = mdl
@@ -159,9 +173,9 @@ nllb_lock = threading.Lock()
 try:
     logger.info(f"[NLLB] Loading {NLLB_MODEL_NAME}...")
     nllb_tokenizer = AutoTokenizer.from_pretrained(NLLB_MODEL_NAME)
-    nllb_model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NAME).to(DEVICE)
+    nllb_model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NAME).to(DEVICE_NLLB)
     nllb_model.eval()
-    logger.info("[NLLB] Loaded ✓")
+    logger.info(f"[NLLB] Loaded on {DEVICE_NLLB} ✓")
 except Exception as e:
     logger.error(f"[NLLB] Failed to load: {e}")
 
@@ -259,7 +273,7 @@ def run_indic_trans(text: str, src_lang: str, tgt_lang: str) -> str:
             batch = ip.preprocess_batch([text], src_lang=src_code, tgt_lang=tgt_code)
             inputs = tokenizer(
                 batch, truncation=True, padding="longest", return_tensors="pt", return_attention_mask=True
-            ).to(DEVICE)
+            ).to(DEVICE_INDIC)
 
             with torch.no_grad():
                 generated = model.generate(
@@ -287,7 +301,7 @@ def run_nllb_trans(text: str, src_code: str, tgt_code: str) -> str:
     try:
         with nllb_lock:
             nllb_tokenizer.src_lang = src_code
-            inputs = nllb_tokenizer(text, return_tensors="pt").to(DEVICE)
+            inputs = nllb_tokenizer(text, return_tensors="pt").to(DEVICE_NLLB)
             
             forced_bos_token_id = nllb_tokenizer.lang_code_to_id[tgt_code]
             

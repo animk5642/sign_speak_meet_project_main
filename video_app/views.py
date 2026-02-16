@@ -296,7 +296,7 @@ def proxy_transcribe(request):
             f'{HPC_SERVER_URL}/transcribe',
             files=files,
             data=data,
-            timeout=30,
+            timeout=120, # Increased to 120s for hybrid model
         )
 
         return JsonResponse(resp.json(), status=resp.status_code)
