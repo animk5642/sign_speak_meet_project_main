@@ -223,6 +223,92 @@ IT2_CODE_MAP = {
     # IT2 is specifically for Indic <-> Indic or Indic <-> English.
 }
 
+# ==============================================================================
+# HALLUCINATION FILTERING
+# ==============================================================================
+
+# Phrases that are ALWAYS hallucinations regardless of audio energy.
+# These are YouTube/podcast boilerplate that real speech never matches.
+_ALWAYS_HALLUCINATION_PHRASES = [
+    "please subscribe", "like and subscribe",
+    "don't forget to subscribe", "hit the bell",
+    "see you in the next video", "see you next time",
+    "चैनल को सब्सक्राइब",
+    "谢谢观看", "ご視聴ありがとう",
+]
+
+# Phrases that are hallucinations ONLY when audio energy is below the threshold.
+# If the audio has real signal strength the user actually said these words.
+_ENERGY_DEPENDENT_HALLUCINATION_PHRASES = [
+    "thanks for watching", "thank you for watching",
+    "thank you for listening", "thanks for listening",
+    "thank you",  "thanks",
+    "देखने के लिए धन्यवाद",   # Hindi "thank you for watching"
+    "धन्यवाद",                # Hindi "thank you"
+    "شكرا للمشاهدة",          # Arabic "thanks for watching"
+    "شكرا",                   # Arabic "thank you"
+]
+
+# RMS below this → audio is near-silent → "thank you" is almost certainly a
+# Whisper hallucination.  Tune empirically; 0.01 works well for float32 PCM.
+_HALLUCINATION_ENERGY_THRESHOLD = 0.01
+
+def get_audio_rms(file_path: str) -> float:
+    """
+    Return the RMS energy of an audio file as a float32 value.
+    Returns 1.0 (non-silent safe default) on any read failure so we
+    never accidentally over-filter real audio.
+    """
+    try:
+        data, _ = sf.read(file_path, dtype="float32", always_2d=True)
+        mono = data.mean(axis=1)
+        rms = float(np.sqrt(np.mean(mono ** 2)))
+        return rms
+    except Exception as e:
+        logger.warning(f"[RMS] Could not compute RMS for {file_path}: {e}")
+        return 1.0  # Safe default — don't over-filter
+
+def _is_hallucination(text: str, audio_path: Optional[str] = None) -> bool:
+    """
+    Detect Whisper hallucinations.
+
+    - Empty / whitespace-only output → always hallucination.
+    - Phrases in _ALWAYS_HALLUCINATION_PHRASES → always hallucination.
+    - Phrases in _ENERGY_DEPENDENT_HALLUCINATION_PHRASES → hallucination ONLY
+      when the audio RMS is below _HALLUCINATION_ENERGY_THRESHOLD (i.e. the
+      audio clip is near-silent).  If the user actually said "thank you" at
+      normal volume the RMS will be above the threshold and the text passes.
+    """
+    if not text or not text.strip():
+        return True
+
+    low = text.strip().lower()
+
+    # 1. Always-filter list (subscribe spam, etc.)
+    if any(p in low for p in _ALWAYS_HALLUCINATION_PHRASES):
+        return True
+
+    # 2. Energy-dependent list ("thank you" and similar)
+    if any(p in low for p in _ENERGY_DEPENDENT_HALLUCINATION_PHRASES):
+        # We need the audio energy to decide
+        if audio_path:
+            rms = get_audio_rms(audio_path)
+            logger.info(f"[HALLUCINATION] Energy-dependent phrase detected. RMS={rms:.5f} threshold={_HALLUCINATION_ENERGY_THRESHOLD}")
+            if rms < _HALLUCINATION_ENERGY_THRESHOLD:
+                logger.info(f"[HALLUCINATION] Low-energy audio → filtering as hallucination: '{text}'")
+                return True
+            # High-energy audio → user genuinely said it
+            logger.info(f"[HALLUCINATION] High-energy audio → keeping real speech: '{text}'")
+            return False
+        else:
+            # No audio path provided — cannot measure energy, so err on the
+            # side of keeping the text (don't over-filter).
+            return False
+
+    return False
+
+# ==============================================================================
+
 def get_audio_duration(file_path: str) -> float:
     try:
         import soundfile as sf
@@ -315,24 +401,6 @@ def run_nllb_trans(text: str, src_code: str, tgt_code: str) -> str:
     except Exception as e:
         logger.error(f"NLLB Error: {e}")
         return f"[NLLB Error]"
-
-
-# Minimal hallucination filter — only catches obvious YouTube/podcast artifacts
-_HALLUCINATION_PHRASES = [
-    "thanks for watching", "thank you for watching",
-    "thank you for listening", "thanks for listening",
-    "please subscribe", "like and subscribe",
-    "don't forget to subscribe", "hit the bell",
-    "see you in the next video", "see you next time",
-    "देखने के लिए धन्यवाद", "चैनल को सब्सक्राइब",
-    "شكرا للمشاهدة", "谢谢观看", "ご視聴ありがとう",
-]
-
-def _is_hallucination(text: str) -> bool:
-    if not text or not text.strip():
-        return True
-    low = text.strip().lower()
-    return any(p in low for p in _HALLUCINATION_PHRASES)
 
 def transcribe_indic_conformer(audio_path: str, lang: str) -> str:
     """Run IndicConformer STT."""
@@ -466,7 +534,8 @@ async def transcribe(
             transcribed_text = transcribe_indic_conformer(temp_path, language_mode)
             detected_lang = language_mode
 
-            if _is_hallucination(transcribed_text):
+            # Pass audio_path so energy check applies for "thank you" variants
+            if _is_hallucination(transcribed_text, audio_path=temp_path):
                 logger.info(f"[HALLUCINATION] Filtered: '{transcribed_text}'")
                 transcribed_text = ""
             
@@ -496,7 +565,8 @@ async def transcribe(
             w_lang = None if language_mode == "auto" else language_mode
             text, det_lang = transcribe_whisper(temp_path, task=task, language=w_lang)
 
-            if _is_hallucination(text):
+            # Pass audio_path so energy check applies for "thank you" variants
+            if _is_hallucination(text, audio_path=temp_path):
                 logger.info(f"[HALLUCINATION] Filtered: '{text}'")
                 text = ""
 
