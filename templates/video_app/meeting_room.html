@@ -130,6 +130,19 @@
         overflow-y: auto;
     }
 
+    .mic-lang-wrapper {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        /* Don't let the wrapper block touch events on adjacent buttons */
+        pointer-events: none;
+    }
+
+    .mic-lang-wrapper>* {
+        pointer-events: auto;
+    }
+
     .chat-container {
         height: calc(100vh - 200px);
         display: flex;
@@ -286,7 +299,9 @@
     /* ─── Responsive ─────────────────────────────── */
     @media (max-width: 768px) {
         .meeting-controls {
-            padding: 8px 16px;
+            padding: 8px 14px;
+            bottom: 10px;
+            border-radius: 40px;
         }
 
         .control-btn {
@@ -299,6 +314,77 @@
         .video-grid {
             grid-template-columns: 1fr;
             height: calc(100vh - 180px);
+            gap: 6px;
+            padding: 6px;
+        }
+
+        .video-item {
+            aspect-ratio: 4/3;
+        }
+
+        .sidebar {
+            height: auto;
+            max-height: 40vh;
+            border-left: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .chat-container {
+            height: 35vh;
+        }
+
+        .meeting-header {
+            padding: 8px 12px;
+        }
+
+        .meeting-header h6 {
+            font-size: 0.82rem !important;
+        }
+
+        /* Move language dropdown ABOVE mic button on mobile */
+        .mic-lang-select {
+            font-size: 0.6rem;
+            min-width: 55px;
+            bottom: auto !important;
+            top: -28px;
+        }
+
+        .sign-language-overlay {
+            top: auto;
+            bottom: 90px;
+            right: 10px;
+            left: 10px;
+            max-width: none;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            margin: 0 4px;
+            font-size: 0.95rem;
+        }
+
+        .meeting-controls {
+            padding: 6px 10px;
+            bottom: 8px;
+        }
+
+        .video-grid {
+            height: calc(100vh - 160px);
+        }
+
+        .video-overlay {
+            font-size: 0.72rem;
+            padding: 4px 10px;
+            bottom: 8px;
+            left: 8px;
+        }
+
+        .mic-lang-select {
+            min-width: 48px;
+            font-size: 0.55rem;
         }
     }
 </style>
@@ -479,35 +565,46 @@
     subtitleUI.init();
 
     // ── Mic Language Dropdown ────────────────────────────────────
+    // Selecting a language ALWAYS sets the subtitle receive language.
+    // Recording only starts if mic is also unmuted.
     const micSpeakLang = document.getElementById('micSpeakLang');
     if (micSpeakLang) {
         micSpeakLang.addEventListener('change', () => {
             const lang = micSpeakLang.value;
-            subtitleClient.speakLang = lang;
-            subtitleClient.sendLanguagePrefs();
 
-            // Check button state (synchronously set) instead of async .muted
+            // Always stop current recording before changing language
             subtitleClient.stopRecording();
-            const audioBtn = document.getElementById('audioBtn');
-            const micEnabled = audioBtn && audioBtn.classList.contains('active');
-            if (lang && micEnabled) {
-                subtitleClient.startRecording();
+
+            // setSpeakLanguage sets BOTH speakLang AND subtitleLang
+            // and sends prefs to WebSocket — works even with mic muted
+            subtitleClient.setSpeakLanguage(lang);
+
+            // Only start recording if mic is ON and a language is selected
+            if (lang) {
+                const audioBtn = document.getElementById('audioBtn');
+                const micEnabled = audioBtn && audioBtn.classList.contains('active');
+                if (micEnabled) {
+                    subtitleClient.startRecording();
+                }
             }
         });
     }
 
     // ── Link Mic Toggle to Subtitle Recording ───────────────────
+    // Toggling mic ON/OFF only affects RECORDING (sending speech).
+    // Subtitle RECEIVING (subtitleLang) stays active regardless.
     const originalToggleAudio = app.toggleAudio.bind(app);
     app.toggleAudio = function () {
         originalToggleAudio();
-        // Check button state (set synchronously by updateBtn) instead of
-        // .muted which is async and still shows the OLD value
         const audioBtn = document.getElementById('audioBtn');
         const micEnabled = audioBtn && audioBtn.classList.contains('active');
         const lang = micSpeakLang ? micSpeakLang.value : '';
+
         if (micEnabled && lang) {
+            // Mic just turned ON with a language selected → start recording
             subtitleClient.startRecording();
         } else {
+            // Mic turned OFF → stop recording (subtitleLang stays set)
             subtitleClient.stopRecording();
         }
     };

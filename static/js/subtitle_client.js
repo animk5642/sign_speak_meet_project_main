@@ -250,7 +250,16 @@ class SubtitleClient {
 
       if (!this.onCaption) return;
 
-      const sourceNllb = data.source_nllb || '';
+      // Determine ACTUAL source language:
+      // 1. Prefer detected_language from HPC (what was actually spoken)
+      // 2. Fall back to source_nllb (what the speaker's dropdown says)
+      let sourceNllb = data.source_nllb || '';
+      const detected = data.detected_language || '';
+      if (detected && SUBTITLE_CONFIG.DETECTED_TO_NLLB[detected]) {
+        // HPC detected a specific language — use it as the real source
+        sourceNllb = SUBTITLE_CONFIG.DETECTED_TO_NLLB[detected];
+      }
+
       const myLang = this.subtitleLang;
 
       if (!myLang || !sourceNllb || sourceNllb === myLang) {
@@ -594,12 +603,16 @@ class SubtitleClient {
     if (wasRecording) this.stopRecording();
 
     this.speakLang = langCode;
-    this.sendLanguagePrefs();
 
-    // Start recording if a valid language is selected
+    // Auto-sync subtitle language to match speaking language
+    // User speaks ML → show subtitles in ML (mal_Mlym)
     if (langCode) {
-      this.startRecording();
+      this.subtitleLang = SUBTITLE_CONFIG.WHISPER_TO_NLLB[langCode] || 'eng_Latn';
+    } else {
+      this.subtitleLang = '';
     }
+
+    this.sendLanguagePrefs();
   }
 
   setSubtitleLanguage(nllbCode) {
@@ -704,12 +717,6 @@ class SubtitleUI {
   }
 
   buildSettingsHTML() {
-    // Build target language options
-    let targetOptions = '';
-    for (const [name, code] of Object.entries(SUBTITLE_CONFIG.TARGET_LANGUAGES)) {
-      targetOptions += `<option value="${code}">${name}</option>`;
-    }
-
     return `
             <div class="subtitle-settings-header">
                 <span><i class="fas fa-closed-captioning me-2"></i>Subtitle Settings</span>
@@ -718,10 +725,6 @@ class SubtitleUI {
                 </button>
             </div>
             <div class="subtitle-settings-body">
-                <div class="subtitle-setting-row">
-                    <label>Show subtitles in</label>
-                    <select id="subtitleTargetLang">${targetOptions}</select>
-                </div>
                 <div class="subtitle-setting-row">
                     <label>Chunk mode</label>
                     <select id="subtitleChunkMode">
@@ -748,16 +751,9 @@ class SubtitleUI {
   }
 
   bindControlEvents() {
-    const targetSel = document.getElementById('subtitleTargetLang');
     const modeSel = document.getElementById('subtitleChunkMode');
     const customRow = document.getElementById('subtitleCustomRow');
     const customDur = document.getElementById('subtitleCustomDuration');
-
-    if (targetSel) {
-      targetSel.addEventListener('change', () => {
-        this.client.setSubtitleLanguage(targetSel.value);
-      });
-    }
 
     if (modeSel) {
       modeSel.addEventListener('change', () => {
