@@ -1,22 +1,29 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Video Dashboard - SignSpeak Meet{% endblock %}
+{% block title %}Dashboard - SignSpeak Meet{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/styles.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-    <!-- Welcome Section -->
+    <!-- Hero Section -->
     <div class="row mb-4">
-        <div class="col-12">
-            <div class="card bg-primary text-white p-4 fade-in">
+        <div class="col-12 fade-in">
+            <div class="dashboard-hero">
                 <div class="row align-items-center">
                     <div class="col-md-8">
-                        <h1 class="display-6"><i class="fas fa-video me-3"></i>Video Meetings</h1>
-                        <p class="lead mb-0">Manage your video conferences and meetings</p>
+                        <h1><i class="fas fa-video me-3"></i>Video Meetings</h1>
+                        <p class="lead mb-0">Manage your video conferences with real-time sign language &amp;
+                            translation</p>
                     </div>
-                    <div class="col-md-4 text-md-end">
-                        <a href="{% url 'create_meeting' %}" class="btn btn-light btn-lg px-4"><i
-                                class="fas fa-plus-circle me-2"></i>New Meeting</a>
+                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                        <a href="{% url 'create_meeting' %}" class="btn btn-light btn-lg px-4 fw-bold"
+                            style="border-radius:12px;">
+                            <i class="fas fa-plus-circle me-2"></i>New Meeting
+                        </a>
                     </div>
                 </div>
             </div>
@@ -24,64 +31,80 @@
     </div>
 
     <!-- Quick Stats -->
-    <div class="row mb-5 text-center">
+    <div class="row mb-4 g-3">
         {% with stats=hosted_meetings.count|add:participant_meetings.count %}
-        <div class="col-md-4 mb-3">
-            <div class="card p-3 h-100">
-                <h3 class="text-primary">{{ hosted_meetings.count }}</h3>
-                <p class="text-muted mb-0">Hosted</p>
+        <div class="col-md-4 fade-in">
+            <div class="stat-card">
+                <div class="stat-icon hosted">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-number">{{ hosted_meetings.count }}</div>
+                    <div class="stat-label">Meetings Hosted</div>
+                </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card p-3 h-100">
-                <h3 class="text-success">{{ participant_meetings.count }}</h3>
-                <p class="text-muted mb-0">Joined</p>
+        <div class="col-md-4 fade-in" style="animation-delay:.1s">
+            <div class="stat-card">
+                <div class="stat-icon joined">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-number">{{ participant_meetings.count }}</div>
+                    <div class="stat-label">Meetings Joined</div>
+                </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card p-3 h-100">
-                <h3 class="text-warning">{{ pending_requests.count }}</h3>
-                <p class="text-muted mb-0">Pending Requests</p>
+        <div class="col-md-4 fade-in" style="animation-delay:.2s">
+            <div class="stat-card">
+                <div class="stat-icon pending">
+                    <i class="fas fa-bell"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-number">{{ pending_requests.count }}</div>
+                    <div class="stat-label">Pending Requests</div>
+                </div>
             </div>
         </div>
         {% endwith %}
     </div>
 
     <!-- Meeting Lists -->
-    <div class="row">
+    <div class="row g-3">
         <div class="col-md-8">
-            <div class="card mb-4 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">Your Meetings</h5>
+            <div class="card mb-4 fade-in" style="animation-delay:.3s">
+                <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Your Meetings</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body px-0 pt-0">
                     {% if hosted_meetings or participant_meetings %}
-                    <div class="list-group list-group-flush">
-                        {% for meeting in hosted_meetings %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div>
-                                <h6 class="mb-0">{{ meeting.title }}</h6>
-                                <small class="text-muted">ID: {{ meeting.room_id }} • Host: You</small>
-                            </div>
-                            <a href="{% url 'meeting_room' meeting.room_id %}"
-                                class="btn btn-primary btn-sm px-3">Join</a>
+                    {% for meeting in hosted_meetings %}
+                    <div class="meeting-list-item">
+                        <div>
+                            <h6><i class="fas fa-crown me-1 text-warning" style="font-size:0.7rem"></i> {{ meeting.title
+                                }}</h6>
+                            <small>ID: {{ meeting.room_id }} &bull; Hosted by you</small>
                         </div>
-                        {% endfor %}
-                        {% for p in participant_meetings %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div>
-                                <h6 class="mb-0">{{ p.meeting.title }}</h6>
-                                <small class="text-muted">ID: {{ p.meeting.room_id }} • Host: {{ p.meeting.host.email
-                                    }}</small>
-                            </div>
-                            <a href="{% url 'meeting_room' p.meeting.room_id %}"
-                                class="btn btn-outline-primary btn-sm px-3">Join</a>
-                        </div>
-                        {% endfor %}
+                        <a href="{% url 'meeting_room' meeting.room_id %}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-sign-in-alt me-1"></i>Join
+                        </a>
                     </div>
+                    {% endfor %}
+                    {% for p in participant_meetings %}
+                    <div class="meeting-list-item">
+                        <div>
+                            <h6>{{ p.meeting.title }}</h6>
+                            <small>ID: {{ p.meeting.room_id }} &bull; Host: {{ p.meeting.host.email }}</small>
+                        </div>
+                        <a href="{% url 'meeting_room' p.meeting.room_id %}" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-sign-in-alt me-1"></i>Join
+                        </a>
+                    </div>
+                    {% endfor %}
                     {% else %}
                     <div class="text-center py-5">
-                        <p class="text-muted">No meetings yet.</p>
+                        <i class="fas fa-video-slash fa-3x text-muted mb-3" style="opacity:0.3"></i>
+                        <p class="text-muted mb-0">No meetings yet. Create one to get started!</p>
                     </div>
                     {% endif %}
                 </div>
@@ -90,54 +113,65 @@
 
         <div class="col-md-4">
             <!-- Pending Requests Section -->
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">Pending Requests ({{ pending_requests.count }})</h5>
+            <div class="card mb-3 fade-in" style="animation-delay:.4s">
+                <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="fas fa-user-plus me-2 text-warning"></i>Pending
+                        <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;">{{
+                            pending_requests.count }}</span>
+                    </h5>
                 </div>
                 <div class="card-body p-0">
                     {% if pending_requests %}
-                    <div class="list-group list-group-flush">
-                        {% for req in pending_requests %}
-                        <div class="list-group-item">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div>
-                                    <h6 class="mb-0">{{ req.user.email }}</h6>
-                                    <small class="text-muted">For: {{ req.meeting.title }}</small>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 mt-2">
-                                <form action="{% url 'handle_join_request' req.id %}" method="POST" class="flex-grow-1">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="approve">
-                                    <button type="submit" class="btn btn-success btn-sm w-100">Approve</button>
-                                </form>
-                                <form action="{% url 'handle_join_request' req.id %}" method="POST" class="flex-grow-1">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="reject">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">Reject</button>
-                                </form>
+                    {% for req in pending_requests %}
+                    <div class="pending-request-item">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <h6 class="mb-0">{{ req.user.email }}</h6>
+                                <small>For: {{ req.meeting.title }}</small>
                             </div>
                         </div>
-                        {% endfor %}
+                        <div class="d-flex gap-2 mt-2">
+                            <form action="{% url 'handle_join_request' req.id %}" method="POST" class="flex-grow-1">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="btn btn-success btn-sm w-100" style="border-radius:8px">
+                                    <i class="fas fa-check me-1"></i>Approve
+                                </button>
+                            </form>
+                            <form action="{% url 'handle_join_request' req.id %}" method="POST" class="flex-grow-1">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="reject">
+                                <button type="submit" class="btn btn-outline-danger btn-sm w-100"
+                                    style="border-radius:8px">
+                                    <i class="fas fa-times me-1"></i>Reject
+                                </button>
+                            </form>
+                        </div>
                     </div>
+                    {% endfor %}
                     {% else %}
                     <div class="text-center py-4">
-                        <p class="text-muted mb-0 small">No pending requests</p>
+                        <p class="text-muted mb-0 small"><i class="fas fa-check-circle me-1 text-success"></i>No pending
+                            requests</p>
                     </div>
                     {% endif %}
                 </div>
             </div>
 
-            <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">Quick Options</h5>
+            <!-- Quick Options -->
+            <div class="card fade-in" style="animation-delay:.5s">
+                <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-bolt me-2 text-info"></i>Quick Actions</h5>
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-outline-primary py-2" onclick="showJoinModal()"><i
-                                class="fas fa-sign-in-alt me-2"></i>Join by ID</button>
-                        <a href="{% url 'create_meeting' %}" class="btn btn-outline-success py-2"><i
-                                class="fas fa-plus me-2"></i>Create New</a>
+                        <button class="quick-option-btn btn btn-outline-primary" onclick="showJoinModal()">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join by Room ID
+                        </button>
+                        <a href="{% url 'create_meeting' %}" class="quick-option-btn btn btn-outline-success">
+                            <i class="fas fa-plus me-2"></i>Create New Meeting
+                        </a>
                     </div>
                 </div>
             </div>
@@ -145,19 +179,22 @@
     </div>
 </div>
 
-<!-- Simple Join Modal -->
+<!-- Join Modal -->
 <div class="modal fade" id="joinMeetingModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Join Meeting</h5><button type="button" class="btn-close"
-                    data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-sign-in-alt me-2 text-primary"></i>Join Meeting</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <input type="text" class="form-control" id="meetingId" placeholder="Enter Meeting ID">
+                <input type="text" class="form-control" id="meetingId" placeholder="Enter Room ID (e.g. A1B2C3D4)">
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary w-100" onclick="joinMeeting()">Join Now</button>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-primary w-100" onclick="joinMeeting()"
+                    style="border-radius:12px;padding:12px">
+                    <i class="fas fa-arrow-right me-2"></i>Join Now
+                </button>
             </div>
         </div>
     </div>

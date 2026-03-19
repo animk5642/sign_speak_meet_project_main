@@ -667,24 +667,24 @@ class SubtitleUI {
     subtitleBtn.innerHTML = '<i class="fas fa-closed-captioning"></i>';
     controlsBar.insertBefore(subtitleBtn, leaveBtn);
 
-    // Create floating mini status bar (audio level + progress + status)
-    const miniBar = document.createElement('div');
-    miniBar.id = 'subtitleMiniBar';
-    miniBar.className = 'subtitle-mini-bar';
-    miniBar.style.display = 'none';
-    miniBar.innerHTML = `
-      <div class="subtitle-mini-inner">
-        <span id="subtitleMiniStatus" class="subtitle-mini-status">Ready</span>
-        <div class="subtitle-mini-level-container">
-          <div id="subtitleMiniLevel" class="subtitle-mini-level"></div>
+    // ── NEW: Top Status Bar (replaces old bottom mini bar) ──
+    const topBar = document.createElement('div');
+    topBar.id = 'subtitleTopBar';
+    topBar.className = 'subtitle-top-bar';
+    topBar.innerHTML = `
+      <div class="subtitle-top-inner">
+        <div id="hpcStatusDot" class="hpc-status-dot" title="HPC Status"></div>
+        <span id="subtitleTopStatus" class="subtitle-top-status">Checking HPC...</span>
+        <div class="top-bar-level-container">
+          <div id="topBarLevel" class="top-bar-level"></div>
         </div>
-        <div class="subtitle-mini-progress-container">
-          <div id="subtitleMiniProgress" class="subtitle-mini-progress"></div>
+        <div id="progressPie" class="progress-pie" title="Recording progress">
+          <div class="progress-pie-inner"></div>
         </div>
       </div>
     `;
-    const meetingControls = document.querySelector('.meeting-controls');
-    meetingControls.parentElement.insertBefore(miniBar, meetingControls);
+    // Insert at the top of the page (fixed position handled by CSS)
+    document.body.appendChild(topBar);
 
     // Create the settings panel (hidden by default)
     const panel = document.createElement('div');
@@ -694,7 +694,10 @@ class SubtitleUI {
     panel.innerHTML = this.buildSettingsHTML();
 
     // Insert above meeting controls
-    meetingControls.parentElement.insertBefore(panel, meetingControls);
+    const meetingControls = document.querySelector('.meeting-controls');
+    if (meetingControls) {
+      meetingControls.parentElement.insertBefore(panel, meetingControls);
+    }
 
     // Bind control events
     this.bindControlEvents();
@@ -777,34 +780,61 @@ class SubtitleUI {
     };
 
     this.client.onStatus = (msg) => {
+      // Update settings panel status
       const el = document.getElementById('subtitleStatus');
       if (el) el.textContent = msg;
-      const miniEl = document.getElementById('subtitleMiniStatus');
-      if (miniEl) miniEl.textContent = msg;
 
-      // Show/hide mini bar based on recording state
-      const miniBar = document.getElementById('subtitleMiniBar');
-      if (miniBar) {
-        const isActive = msg === 'Recording...' || msg === 'Processing...';
-        miniBar.style.display = isActive ? 'block' : 'none';
+      // Update top bar status text
+      const topEl = document.getElementById('subtitleTopStatus');
+      if (topEl) {
+        topEl.textContent = msg;
+        // Remove all state classes
+        topEl.classList.remove('error', 'active');
+        if (msg.includes('error') || msg.includes('unreachable') || msg.includes('unhealthy')) {
+          topEl.classList.add('error');
+        } else if (msg === 'Recording...' || msg === 'Processing...') {
+          topEl.classList.add('active');
+        }
+      }
+
+      // Update HPC status dot
+      const dot = document.getElementById('hpcStatusDot');
+      if (dot) {
+        if (msg.includes('connected') || msg.includes('Recording') || msg.includes('Processing')) {
+          dot.classList.add('connected');
+          dot.title = 'HPC Connected';
+        } else if (msg.includes('unhealthy') || msg.includes('unreachable') || msg.includes('error')) {
+          dot.classList.remove('connected');
+          dot.title = 'HPC Unavailable';
+        }
       }
     };
 
     this.client.onAudioLevel = (rms) => {
       const pct = Math.min(rms * 300, 100);
-      const color = pct > 60 ? '#f80' : '#0f0';
+      const color = pct > 60 ? '#f80' : '#34a853';
 
+      // Settings panel bar
       const bar = document.getElementById('subtitleLevelBar');
       if (bar) { bar.style.width = pct + '%'; bar.style.background = color; }
-      const miniBar = document.getElementById('subtitleMiniLevel');
-      if (miniBar) { miniBar.style.width = pct + '%'; miniBar.style.background = color; }
+
+      // Top bar level
+      const topBar = document.getElementById('topBarLevel');
+      if (topBar) { topBar.style.width = pct + '%'; topBar.style.background = color; }
     };
 
     this.client.onProgress = (pct) => {
+      // Settings panel progress bar
       const bar = document.getElementById('subtitleProgressBar');
       if (bar) bar.style.width = pct + '%';
-      const miniBar = document.getElementById('subtitleMiniProgress');
-      if (miniBar) miniBar.style.width = pct + '%';
+
+      // Top bar pie chart via conic-gradient
+      const pie = document.getElementById('progressPie');
+      if (pie) {
+        const clampPct = Math.min(Math.max(pct, 0), 100);
+        const activeColor = clampPct > 80 ? '#f59e0b' : '#667eea';
+        pie.style.background = `conic-gradient(${activeColor} 0% ${clampPct}%, rgba(255,255,255,0.08) ${clampPct}% 100%)`;
+      }
     };
   }
 
