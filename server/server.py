@@ -316,6 +316,24 @@ def run_nllb_trans(text: str, src_code: str, tgt_code: str) -> str:
         logger.error(f"NLLB Error: {e}")
         return f"[NLLB Error]"
 
+
+# Minimal hallucination filter — only catches obvious YouTube/podcast artifacts
+_HALLUCINATION_PHRASES = [
+    "thanks for watching", "thank you for watching",
+    "thank you for listening", "thanks for listening",
+    "please subscribe", "like and subscribe",
+    "don't forget to subscribe", "hit the bell",
+    "see you in the next video", "see you next time",
+    "देखने के लिए धन्यवाद", "चैनल को सब्सक्राइब",
+    "شكرا للمشاهدة", "谢谢观看", "ご視聴ありがとう",
+]
+
+def _is_hallucination(text: str) -> bool:
+    if not text or not text.strip():
+        return True
+    low = text.strip().lower()
+    return any(p in low for p in _HALLUCINATION_PHRASES)
+
 def transcribe_indic_conformer(audio_path: str, lang: str) -> str:
     """Run IndicConformer STT."""
     if ic_model is None:
@@ -447,6 +465,10 @@ async def transcribe(
             # Step 1: STT using IndicConformer (Best for Indian langs)
             transcribed_text = transcribe_indic_conformer(temp_path, language_mode)
             detected_lang = language_mode
+
+            if _is_hallucination(transcribed_text):
+                logger.info(f"[HALLUCINATION] Filtered: '{transcribed_text}'")
+                transcribed_text = ""
             
             # Step 2: Translation
             if target_language != language_mode and transcribed_text:
@@ -473,7 +495,11 @@ async def transcribe(
             # Run Whisper
             w_lang = None if language_mode == "auto" else language_mode
             text, det_lang = transcribe_whisper(temp_path, task=task, language=w_lang)
-            
+
+            if _is_hallucination(text):
+                logger.info(f"[HALLUCINATION] Filtered: '{text}'")
+                text = ""
+
             transcribed_text = text
             if language_mode == "auto":
                 detected_lang = det_lang
