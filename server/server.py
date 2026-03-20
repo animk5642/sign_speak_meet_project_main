@@ -385,6 +385,212 @@ def run_nllb_trans(text: str, src_code: str, tgt_code: str) -> str:
         return text
     
     try:
+<<<<<<< HEAD
+        # Step 1: VAD (stricter threshold for all Indic languages including mixed modes)
+        is_indic_mode = language_mode in ("ml", "ml-en", "ml-roman", "ml-via-en", "hi", "hi-en", "ta", "te", "kn")
+        vad_thr = VAD_THRESHOLD_INDIC if is_indic_mode else VAD_THRESHOLD
+        has_speech, speech_ratio = check_speech_activity(tmp_path, vad_threshold=vad_thr)
+
+        # Reject chunks with very little speech — mostly background noise
+        # that Whisper will hallucinate on
+        MIN_SPEECH_RATIO = 0.15  # At least 15% of the chunk must be speech
+        if has_speech and speech_ratio < MIN_SPEECH_RATIO:
+            print(f"[VAD] Speech ratio too low ({speech_ratio*100:.1f}% < {MIN_SPEECH_RATIO*100:.0f}%) — treating as noise")
+            has_speech = False
+
+        if not has_speech:
+            return {
+                "text": "",
+                "translated_text": "",
+                "language_mode": language_mode,
+                "detected_language": "none",
+                "processing_time": round(time.time() - start_time, 3),
+                "translation_time": 0,
+                "success": True,
+                "vad_speech_ratio": round(speech_ratio, 2),
+                "note": "No speech detected"
+            }
+
+        # Step 2: Whisper Transcription
+        config = LANGUAGE_CONFIG.get(language_mode, LANGUAGE_CONFIG["ml-en"])
+        whisper_lang = config["whisper_lang"]
+        prompt = config["prompt"]
+
+        print(f"\n{'='*50}")
+        print(f"Mode: {language_mode} | Lang: {whisper_lang or 'auto'}")
+        if target_language:
+            print(f"Translate to NLLB: {target_language}")
+
+        # Use relaxed parameters for low-resource / non-Latin languages
+        is_low_resource = language_mode in ("ml", "ml-en", "ml-roman", "hi", "hi-en", "ta", "te", "kn")
+        is_pure_indic = language_mode in ("ml", "hi", "ta", "te", "kn")
+        use_translate = config.get("use_translate", False)
+
+        # Temperature fallback: Whisper retries with higher temperatures
+        # when decoding quality is poor. Critical for low-resource languages
+        # where greedy decoding (0.0) often falls back to English.
+        if is_low_resource:
+            temperature = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+        else:
+            temperature = 0.0
+
+        # For Manglish mode: task="translate" tells Whisper to output English
+        # text from Malayalam audio — this is far more reliable than transcribe
+        whisper_task = "translate" if use_translate else "transcribe"
+        print(f"Whisper task: {whisper_task}")
+
+        result = model.transcribe(
+            tmp_path,
+            language=whisper_lang,
+            task=whisper_task,
+            temperature=temperature,
+            beam_size=5 if is_low_resource else 1,
+            best_of=5 if is_low_resource else 1,
+            fp16=(device == "cuda"),
+            condition_on_previous_text=False,
+            initial_prompt=prompt,
+            verbose=False,
+            without_timestamps=True,
+            compression_ratio_threshold=2.4 if is_pure_indic else (2.8 if is_low_resource else 1.8),
+            logprob_threshold=-0.7 if is_pure_indic else (-1.0 if is_low_resource else -0.3),
+            no_speech_threshold=0.5 if is_pure_indic else (0.6 if is_low_resource else 0.4)
+        )
+
+        raw_text = result.get("text", "").strip()
+        detected_lang = result.get("language", whisper_lang or "unknown")
+
+        # Step 2b: Segment-level confidence filtering
+        # Discard individual segments with very low avg_logprob
+        # Pure Indic: strict thresholds | Mixed (ml-en): relaxed thresholds
+        segments = result.get("segments", [])
+        is_mixed_mode = language_mode in ("ml-en", "hi-en")
+        if segments and (is_pure_indic or is_mixed_mode):
+            # Relaxed thresholds for mixed mode (ml-en works better, don't over-filter)
+            lp_threshold = -0.8 if is_pure_indic else -1.0
+            cr_threshold = 2.4 if is_pure_indic else 2.8
+            good_segments = []
+            for seg in segments:
+                avg_lp = seg.get("avg_logprob", 0)
+                seg_cr = seg.get("compression_ratio", 1.0)
+                seg_text = seg.get("text", "").strip()
+                no_speech = seg.get("no_speech_prob", 0)
+                if avg_lp < lp_threshold:
+                    print(f"[SEG-FILTER] Dropping low-confidence segment (avg_logprob={avg_lp:.2f}): {seg_text[:50]}")
+                elif seg_cr > cr_threshold:
+                    print(f"[SEG-FILTER] Dropping high-compression segment (cr={seg_cr:.2f}): {seg_text[:50]}")
+                elif no_speech > 0.8:
+                    print(f"[SEG-FILTER] Dropping high no_speech segment (prob={no_speech:.2f}): {seg_text[:50]}")
+                else:
+                    good_segments.append(seg_text)
+            text = " ".join(good_segments).strip()
+            if text != raw_text:
+                print(f"[SEG-FILTER] Filtered: '{raw_text[:60]}' → '{text[:60]}'")
+        else:
+            text = raw_text
+
+        # Step 2c: Post-process mixed language output
+        if text and is_mixed_mode:
+            text = post_process_mixed_text(text)
+
+        # Step 3: Hallucination filter
+        text = filter_hallucinations(text, language_mode=language_mode)
+
+        # Step 3b: Script validation — for pure Indic modes (not mixed),
+        # if the output is entirely Latin, it's a Whisper hallucination.
+        # Retry once with a warmer temperature before giving up.
+        if text and is_pure_indic and not is_target_script(text, language_mode):
+            print(f"[RETRY] Got Latin text in {language_mode} mode, retrying with temperature=0.4...")
+            retry_result = model.transcribe(
+                tmp_path,
+                language=whisper_lang,
+                task="transcribe",
+                temperature=0.4,
+                beam_size=5,
+                best_of=5,
+                fp16=(device == "cuda"),
+                condition_on_previous_text=False,
+                initial_prompt=prompt,
+                verbose=False,
+                without_timestamps=True,
+                compression_ratio_threshold=3.0,
+                logprob_threshold=-1.5,
+                no_speech_threshold=0.7
+            )
+            retry_text = retry_result.get("text", "").strip()
+            retry_text = filter_hallucinations(retry_text, language_mode=language_mode)
+            if retry_text and is_target_script(retry_text, language_mode):
+                text = retry_text
+                detected_lang = retry_result.get("language", whisper_lang or "unknown")
+                print(f"[RETRY] Success: {text[:60]}")
+            else:
+                # Both attempts failed — suppress entirely
+                print(f"[RETRY] Still no {language_mode} script, suppressing.")
+                text = ""
+        elif text and language_mode in ("ml-en", "hi-en"):
+            # For mixed modes, don't suppress — allow both scripts
+            pass
+
+        # Step 4: NLLB Translation (with smart mixed-language handling)
+        translated_text = ""
+        translation_time = 0.0
+
+        if text and use_translate:
+            # Whisper gave English text (task="translate").
+            # Convert internally so user sees source language + target language.
+            english_text = text
+            source_nllb = config.get("nllb_code", "")
+            t_start = time.time()
+
+            # Original Speech panel: English → source language (e.g., Malayalam)
+            if source_nllb and source_nllb != "eng_Latn":
+                source_text = translate_text(english_text, "eng_Latn", source_nllb)
+                text = source_text if source_text else english_text
+            # else: source is English, keep as-is
+
+            # Translation panel: English → user's target language
+            if target_language and target_language != "eng_Latn":
+                translated_text = translate_text(english_text, "eng_Latn", target_language)
+            elif target_language == "eng_Latn":
+                translated_text = english_text
+
+            translation_time = round(time.time() - t_start, 3)
+            print(f"[TRANSLATE] EN: {english_text[:50]} → src({source_nllb}): {text[:50]}")
+            if translated_text:
+                print(f"[TRANSLATE] → tgt({target_language}): {translated_text[:50]}")
+        elif text and target_language:
+            t_start = time.time()
+            if is_mixed_mode:
+                # Smart mixed-language translation:
+                # Split into ML/EN chunks, translate only the ML parts
+                translated_text = translate_mixed_text(text, target_language)
+                print(f"[SMART-TRANSLATE] Mixed '{text[:50]}' → '{translated_text[:50]}'")
+            else:
+                # Standard single-language translation
+                source_nllb = config.get("nllb_code") or WHISPER_TO_NLLB.get(detected_lang, "")
+                if source_nllb:
+                    translated_text = translate_text(text, source_nllb, target_language)
+            translation_time = round(time.time() - t_start, 3)
+
+        processing_time = time.time() - start_time
+
+        print(f"Detected: {detected_lang} | Total: {processing_time:.2f}s")
+        print(f"Original : {text[:100]}")
+        if translated_text:
+            print(f"Translated: {translated_text[:100]}")
+
+        return {
+            "text": text,
+            "translated_text": translated_text,
+            "language_mode": language_mode,
+            "detected_language": detected_lang,
+            "processing_time": round(processing_time, 3),
+            "translation_time": translation_time,
+            "success": True,
+            "vad_speech_ratio": round(speech_ratio, 2),
+            "nllb_available": NLLB_AVAILABLE
+        }
+
+=======
         with nllb_lock:
             nllb_tokenizer.src_lang = src_code
             inputs = nllb_tokenizer(text, return_tensors="pt").to(DEVICE_NLLB)
@@ -398,7 +604,7 @@ def run_nllb_trans(text: str, src_code: str, tgt_code: str) -> str:
                 
             result = nllb_tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
             return result
-
+>>>>>>> fcbd21a
     except Exception as e:
         logger.error(f"NLLB Error: {e}")
         return f"[NLLB Error]"
