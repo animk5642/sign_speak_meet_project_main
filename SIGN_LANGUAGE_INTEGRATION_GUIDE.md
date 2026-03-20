@@ -317,6 +317,8 @@ Possible improvements:
 
 ## 📞 Support
 
+
+
 If you encounter issues:
 1. Check Django logs: `python manage.py runserver` output
 2. Check browser console: F12 → Console tab
@@ -340,3 +342,20 @@ Your integration is successful if:
 **Integration completed successfully! 🎉**
 
 Developed with professional ML engineering and web development best practices.
+
+
+# Stop old container
+docker rm -f indic-unified
+
+# Rebuild (important to get the new server.py)
+docker build --no-cache -t indic-unified .
+
+# Run with 2 GPUs
+docker run \
+  --gpus '"device=2,3"' \
+  -p 9105:8000 \
+  -e HF_TOKEN=\
+  -v ~/hf_cache:/root/.cache/huggingface \
+  -d --restart=unless-stopped \
+  --name indic-unified \
+  indic-unified:latest

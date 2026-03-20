@@ -1,37 +1,6 @@
-# 🔍 DIAGNOSIS: "No Model Running" - Frames Not Collecting
 
-## Your Issue
 
-From your screenshot and message:
-- ✅ FPS: 17 (camera working)
-- ❌ **Collecting: 0/30 frames (0%)** ← Stuck at 0!
-- ❌ **"No hands detected"** ← MediaPipe not detecting hands
 
-**Problem**: Frames aren't accumulating because MediaPipe isn't detecting hands!
-
----
-
-## Root Cause
-
-The code requires **hand detection** before collecting frames:
-
-```python
-# Only process if we have hand landmarks
-if not has_hands:
-    if len(self.frame_keypoints) > 0:
-        self.frame_keypoints = []  # Clear buffer
-    return None  # Don't collect frame
-```
-
-**If MediaPipe can't detect hands → No frames collected → No prediction!**
-
----
-
-## Why MediaPipe Might Not Detect Hands
-
-### 1. **Lighting Issues** 🔦
-- Room too dark
-- Backlighting (window behind you)
 - Shadows on hands
 
 **Solution**: Move to well-lit area, face a light source

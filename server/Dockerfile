@@ -1,46 +1,79 @@
-# Whisper STT + NLLB Translation Server
-# Use PyTorch 2.4 (required by latest Transformers)
-FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
-
+# ---------------------------------------------------------
+# CUDA base (Ubuntu 22.04 + CUDA 12.1.1)
+# ---------------------------------------------------------
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
-RUN apt-get update && \
-  apt-get install -y ffmpeg git && \
-  rm -rf /var/lib/apt/lists/*
+# ---------------------------------------------------------
+# System deps
+# ---------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+  python3.10 \
+  python3.10-distutils \
+  python3-pip \
+  git \
+  ffmpeg \
+  libsndfile1 \
+  curl \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
+RUN ln -s /usr/bin/python3.10 /usr/bin/python
+RUN python -m pip install --upgrade pip setuptools wheel
 
-# Fix huggingface compatibility
+# ---------------------------------------------------------
+# Remove conflicting preinstalls
+# ---------------------------------------------------------
+RUN pip uninstall -y \
+  numpy torch torchvision torchaudio \
+  transformers huggingface_hub || true
+
+# ---------------------------------------------------------
+# PyTorch CUDA 12.1
+# ---------------------------------------------------------
 RUN pip install --no-cache-dir \
-  "filelock>=3.13.1" \
-  "huggingface_hub>=0.23.0"
+  torch==2.4.1+cu121 \
+  torchvision==0.19.1+cu121 \
+  torchaudio==2.4.1+cu121 \
+  --index-url https://download.pytorch.org/whl/cu121
 
-# Whisper
-RUN pip install --no-cache-dir openai-whisper
-
-# API
+# ---------------------------------------------------------
+# Core ML stack
+# KEY FIX: transformers>=4.40.0 required by IndicTrans2
+# Whisper also needs recent torch/transformers
+# ---------------------------------------------------------
 RUN pip install --no-cache-dir \
-  fastapi \
-  "uvicorn[standard]" \
-  python-multipart
-
-# Audio
-RUN pip install --no-cache-dir \
-  soundfile \
-  scipy \
-  numpy
-
-# Stable transformers version (VERY IMPORTANT)
-RUN pip install --no-cache-dir \
-  "transformers==4.40.2" \
+  "numpy<2.0" \
+  "transformers>=4.40.0,<4.46.0" \
+  "tokenizers>=0.19.0" \
+  "huggingface_hub>=0.23.0" \
+  "accelerate>=0.28.0" \
   sentencepiece \
   sacremoses \
-  protobuf
+  librosa \
+  soundfile \
+  scipy \
+  fastapi \
+  uvicorn[standard] \
+  python-multipart \
+  onnxruntime-gpu
 
+# ---------------------------------------------------------
+# Whisper
+# ---------------------------------------------------------
+RUN pip install --no-cache-dir openai-whisper
+
+# ---------------------------------------------------------
+# IndicTransToolkit — PyPI
+# ---------------------------------------------------------
+RUN pip install --no-cache-dir indictranstoolkit
+
+# ---------------------------------------------------------
+# App
+# ---------------------------------------------------------
 WORKDIR /app
-
-COPY server.py .
+COPY server.py /app/server.py
 
 EXPOSE 8000
 

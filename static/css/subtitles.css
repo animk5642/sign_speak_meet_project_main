@@ -53,7 +53,7 @@
     transform: translateY(-5px);
 }
 
-/* Self caption — green accent, slightly muted */
+/* Self caption — green accent */
 .subtitle-caption.self {
     border-left: 3px solid #34a853;
     background: rgba(52, 168, 83, 0.12);
@@ -231,7 +231,7 @@
     border-color: #4285f4;
 }
 
-/* ─── Audio Level Bar ───────────────────────────── */
+/* ─── Audio Level Bar (in settings panel) ───────── */
 
 .subtitle-level-bar-container {
     flex: 1;
@@ -250,7 +250,7 @@
     transition: width 0.1s linear;
 }
 
-/* ─── Progress Bar ──────────────────────────────── */
+/* ─── Progress Bar (in settings panel) ──────────── */
 
 .subtitle-progress-bar-container {
     flex: 1;
@@ -269,7 +269,7 @@
     transition: width 0.15s linear;
 }
 
-/* ─── Status ────────────────────────────────────── */
+/* ─── Status (in settings panel) ────────────────── */
 
 .subtitle-status {
     color: #888;
@@ -278,71 +278,139 @@
     margin-top: 8px;
 }
 
-/* ─── Floating Mini Status Bar ─────────────────── */
+/* ═══════════════════════════════════════════════════
+   TOP STATUS BAR (relocated from bottom mini bar)
+   Shows HPC status, recording state, pie chart progress
+   ═══════════════════════════════════════════════════ */
 
-.subtitle-mini-bar {
+.subtitle-top-bar {
     position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 999;
-    width: 320px;
-    max-width: 80vw;
+    top: 56px;
+    right: 16px;
+    z-index: 1050;
+    width: auto;
+    max-width: 360px;
+    animation: topBarSlideIn 0.3s ease-out;
 }
 
-.subtitle-mini-inner {
+@keyframes topBarSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.subtitle-top-inner {
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: rgba(15, 15, 15, 0.92);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 20px;
-    padding: 6px 14px;
+    gap: 10px;
+    background: rgba(10, 10, 20, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 14px;
+    padding: 8px 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
-.subtitle-mini-status {
-    color: #8ab4f8;
-    font-size: 0.68rem;
+/* HPC Status Dot */
+.hpc-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ea4335;
+    flex-shrink: 0;
+    transition: background 0.3s ease;
+    box-shadow: 0 0 6px rgba(234, 67, 53, 0.5);
+}
+
+.hpc-status-dot.connected {
+    background: #34a853;
+    box-shadow: 0 0 6px rgba(52, 168, 83, 0.6);
+    animation: dotPulse 2s infinite;
+}
+
+@keyframes dotPulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+/* Status Text */
+.subtitle-top-status {
+    color: #e8eaed;
+    font-size: 0.72rem;
     font-weight: 600;
     white-space: nowrap;
-    min-width: 60px;
+    letter-spacing: 0.2px;
 }
 
-.subtitle-mini-level-container {
-    flex: 1;
+.subtitle-top-status.error {
+    color: #f28b82;
+}
+
+.subtitle-top-status.active {
+    color: #81c995;
+}
+
+/* ─── Pie Chart Progress (CSS conic-gradient) ───── */
+
+.progress-pie {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: conic-gradient(#667eea 0%,
+            #667eea 0%,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.08) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s linear;
+    position: relative;
+}
+
+.progress-pie-inner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(10, 10, 20, 0.95);
+}
+
+/* ─── Audio Level (in top bar) ──────────────────── */
+
+.top-bar-level-container {
+    width: 50px;
     height: 4px;
-    background: #1a1a1a;
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 2px;
     overflow: hidden;
-    min-width: 50px;
+    flex-shrink: 0;
 }
 
-.subtitle-mini-level {
+.top-bar-level {
     height: 100%;
     width: 0%;
-    background: #0f0;
+    background: #34a853;
     border-radius: 2px;
-    transition: width 0.1s linear;
+    transition: width 0.1s linear, background 0.2s;
 }
 
-.subtitle-mini-progress-container {
-    flex: 1;
-    height: 4px;
-    background: #1a1a1a;
-    border-radius: 2px;
-    overflow: hidden;
-    min-width: 50px;
-}
-
-.subtitle-mini-progress {
-    height: 100%;
-    width: 0%;
-    background: #f80;
-    border-radius: 2px;
-    transition: width 0.15s linear;
+/* ═════════ LEGACY: hide old mini bar ════════════ */
+.subtitle-mini-bar {
+    display: none !important;
 }
 
 /* ─── Responsive ────────────────────────────────── */
@@ -384,6 +452,36 @@
         top: -6px;
         right: -6px;
     }
+
+    /* Top bar: move to top-right, shrink */
+    .subtitle-top-bar {
+        top: 52px;
+        right: 8px;
+        max-width: 280px;
+    }
+
+    .subtitle-top-inner {
+        padding: 6px 12px;
+        gap: 8px;
+    }
+
+    .subtitle-top-status {
+        font-size: 0.65rem;
+    }
+
+    .progress-pie {
+        width: 24px;
+        height: 24px;
+    }
+
+    .progress-pie-inner {
+        width: 14px;
+        height: 14px;
+    }
+
+    .top-bar-level-container {
+        width: 36px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -402,5 +500,11 @@
         height: 40px !important;
         margin: 0 4px !important;
         font-size: 1rem !important;
+    }
+
+    .subtitle-top-bar {
+        top: 50px;
+        right: 4px;
+        max-width: 240px;
     }
 }
