@@ -81,8 +81,8 @@
                     {% for meeting in hosted_meetings %}
                     <div class="meeting-list-item">
                         <div>
-                            <h6><i class="fas fa-crown me-1 text-warning" style="font-size:0.7rem"></i> {{ meeting.title
-                                }}</h6>
+                            <h6><i class="fas fa-crown me-1 text-warning" style="font-size:0.7rem"></i> {{
+                                meeting.title|default:meeting.room_id }}</h6>
                             <small>ID: {{ meeting.room_id }} &bull; Hosted by you</small>
                         </div>
                         <a href="{% url 'meeting_room' meeting.room_id %}" class="btn btn-primary btn-sm">
@@ -93,7 +93,7 @@
                     {% for p in participant_meetings %}
                     <div class="meeting-list-item">
                         <div>
-                            <h6>{{ p.meeting.title }}</h6>
+                            <h6>{{ p.meeting.title|default:p.meeting.room_id }}</h6>
                             <small>ID: {{ p.meeting.room_id }} &bull; Host: {{ p.meeting.host.email }}</small>
                         </div>
                         <a href="{% url 'meeting_room' p.meeting.room_id %}" class="btn btn-outline-primary btn-sm">
@@ -118,7 +118,7 @@
                     <h5 class="mb-0 fw-bold">
                         <i class="fas fa-user-plus me-2 text-warning"></i>Pending
                         <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;">{{
-                            pending_requests.count }}</span>
+                            pending_requests.count|default:0 }}</span>
                     </h5>
                 </div>
                 <div class="card-body p-0">

@@ -23,7 +23,18 @@ def register(request):
 @login_required
 def dashboard(request):
     # User profile dashboard
-    return render(request, 'users/dashboard.html')
+    from video_app.models import MeetingRoom, MeetingParticipant, JoinRequest
+    hosted_meetings = MeetingRoom.objects.filter(host=request.user)
+    participant_meetings = MeetingParticipant.objects.filter(user=request.user, status='approved')
+    pending_requests = JoinRequest.objects.filter(
+        meeting__host=request.user,
+        status='pending'
+    ).select_related('meeting', 'user')
+    return render(request, 'users/dashboard.html', {
+        'hosted_meetings': hosted_meetings,
+        'participant_meetings': participant_meetings,
+        'pending_requests': pending_requests,
+    })
 
 @login_required
 def complete_profile(request):

@@ -20,16 +20,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── Swipe config — exact values from word3.py ────────────────────────────────
-SWIPE_HISTORY_FRAMES    = 14
-SWIPE_MIN_DISTANCE_PX   = 85
-SWIPE_MAX_VERTICAL_PX   = 50
-SWIPE_MIN_VELOCITY_PX   = 15
-SWIPE_CONSISTENCY_RATIO = 0.72
-SWIPE_MIN_TIME_SEC      = 0.08
-SWIPE_MAX_TIME_SEC      = 1.20
-SWIPE_MIN_R2            = 0.80
-SWIPE_COOLDOWN_SEC      = 0.95
+# ── Swipe config — tuned for fast, responsive backspace ──────────────────────
+SWIPE_HISTORY_FRAMES    = 5       # very few frames = near-instant trigger
+SWIPE_MIN_DISTANCE_PX   = 35      # short swipe still counts
+SWIPE_MAX_VERTICAL_PX   = 80      # very forgiving vertical tolerance
+SWIPE_MIN_VELOCITY_PX   = 8       # low velocity threshold
+SWIPE_CONSISTENCY_RATIO = 0.50    # half the frames moving left is enough
+SWIPE_MIN_TIME_SEC      = 0.03    # nearly instant swipes accepted
+SWIPE_MAX_TIME_SEC      = 1.50
+SWIPE_MIN_R2            = 0.50    # relaxed linearity
+SWIPE_COOLDOWN_SEC      = 0.35    # rapid repeated backspaces
 
 LEFT_HAND_LABEL  = "Left"
 RIGHT_HAND_LABEL = "Right"
