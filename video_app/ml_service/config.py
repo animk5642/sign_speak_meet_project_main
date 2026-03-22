@@ -12,10 +12,19 @@ SIGN_LANGUAGE_DIR = BASE_DIR / "sign-language-recognition"
 MODEL_PATH = SIGN_LANGUAGE_DIR / "weights" / "model.tflite"
 TRAIN_CSV_PATH = SIGN_LANGUAGE_DIR / "asl-signs" / "train.csv"
 
+# Word3 Gesture Recognition paths
+WORD3_DIR = BASE_DIR / "word3_gesture_recognition"
+WORD3_MODEL_PATH = WORD3_DIR / "model" / "keypoint_classifier" / "keypoint_classifier.tflite"
+WORD3_LABELS_PATH = WORD3_DIR / "model" / "keypoint_classifier" / "keypoint_classifier_label.csv"
+
 # Model parameters
 SEQUENCE_LENGTH = 30  # Number of frames needed for prediction
 CONFIDENCE_THRESHOLD = 0.7  # Minimum confidence for displaying predictions
 FRAME_SKIP = 2  # Process every N frames to reduce load
+
+# Word3 parameters
+WORD3_LETTER_HOLD_SEC = 1.0   # Seconds to hold a letter before it registers
+WORD3_WORD_BREAK_SEC = 2.0    # Seconds without hands = space (word break)
 
 # MediaPipe parameters
 MIN_DETECTION_CONFIDENCE = 0.5

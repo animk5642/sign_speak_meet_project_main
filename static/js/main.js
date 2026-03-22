@@ -294,6 +294,7 @@ class SignSpeakMeetApp {
         this.chat = null;
         this.requests = null;
         this.signLanguage = null;
+        this.word3SignLanguage = null;
         this.timerInterval = null;
         this.seconds = 0;
         this.participantNames = {};  // Store participant names by UID
@@ -326,6 +327,10 @@ class SignSpeakMeetApp {
         // 3. Init Sign Language Manager - Pass the Agora manager to access video track
         this.signLanguage = new SignLanguageManager(this.roomId, this.agora);
         this.signLanguage.initialize();
+
+        // 3b. Init Word3 Sign Language Manager (letter-based A-Z)
+        this.word3SignLanguage = new Word3SignLanguageManager(this.roomId, this.agora);
+        this.word3SignLanguage.initialize();
 
         // 4. Init Request Manager if host
         if (document.getElementById('pendingRequestsSection')) {
@@ -503,10 +508,32 @@ class SignSpeakMeetApp {
         }
     }
 
+    toggleWord3SignLanguage() {
+        if (!this.word3SignLanguage) return;
+
+        const btn = document.getElementById('word3SignBtn');
+
+        if (this.word3SignLanguage.isActive) {
+            this.word3SignLanguage.stop();
+            btn.className = 'control-btn primary';
+            btn.querySelector('i').className = 'fas fa-font';
+            this.showNotification('Letter sign language stopped', 'info');
+        } else {
+            this.word3SignLanguage.start();
+            btn.className = 'control-btn active';
+            btn.querySelector('i').className = 'fas fa-font';
+            this.showNotification('Letter sign language started', 'success');
+        }
+    }
+
     async leave() {
         // Cleanup sign language
         if (this.signLanguage) {
             this.signLanguage.disconnect();
+        }
+        // Cleanup Word3 sign language
+        if (this.word3SignLanguage) {
+            this.word3SignLanguage.disconnect();
         }
 
         await this.agora.stop();
@@ -789,6 +816,321 @@ class SignLanguageManager {
 
         } catch (error) {
             console.error('Error capturing frame:', error);
+        }
+    }
+
+    sendStatus() {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(JSON.stringify({ type: 'status' }));
+        }
+    }
+
+    disconnect() {
+        this.stop();
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+        }
+    }
+}
+
+
+// Word3 Sign Language Manager (Letter-based A-Z)
+class Word3SignLanguageManager {
+    constructor(roomId, agoraManager) {
+        this.roomId = roomId;
+        this.agoraManager = agoraManager;
+        this.websocket = null;
+        this.isActive = false;
+        this.frameInterval = null;
+        this.predictions = new Map(); // userId -> prediction data
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.videoElement = null;
+    }
+
+    initialize() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/word3-sign/${this.roomId}/`;
+
+        this.websocket = new WebSocket(wsUrl);
+
+        this.websocket.onopen = () => {
+            console.log('Word3 WebSocket connected');
+            this.sendStatus();
+        };
+
+        this.websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+        };
+
+        this.websocket.onerror = (error) => {
+            console.error('Word3 WebSocket error:', error);
+        };
+
+        this.websocket.onclose = () => {
+            console.log('Word3 WebSocket closed');
+        };
+    }
+
+    handleMessage(data) {
+        if (data.type === 'word3_prediction') {
+            // Update prediction for this user
+            this.predictions.set(data.user_id, {
+                username: data.username,
+                letter: data.letter,
+                holdProgress: data.hold_progress,
+                currentWord: data.current_word,
+                sentence: data.sentence,
+                handLandmarks: data.hand_landmarks,
+                didBackspace: data.did_backspace || false,
+                isSwiping: data.is_swiping || false,
+                timestamp: Date.now()
+            });
+
+            this.updateVideoOverlays();
+
+            // Clear stale predictions after 1.5s of no updates
+            setTimeout(() => {
+                const pred = this.predictions.get(data.user_id);
+                if (pred && (Date.now() - pred.timestamp) > 1400) {
+                    this.predictions.delete(data.user_id);
+                    this.updateVideoOverlays();
+                }
+            }, 1500);
+
+        } else if (data.type === 'error') {
+            console.error('Word3 error:', data.message);
+        }
+    }
+
+    updateVideoOverlays() {
+        // Update overlays on each user's video element
+        for (const [userId, pred] of this.predictions.entries()) {
+            this._updateSingleOverlay(userId, pred);
+        }
+    }
+
+    _updateSingleOverlay(userId, pred) {
+        // Determine the video container — local or remote
+        let containerEl = null;
+        const localUID = sessionStorage.getItem('UID');
+
+        if (userId === localUID) {
+            // Local user — find the local video container
+            containerEl = document.getElementById('localVideo')?.closest('.video-item');
+        } else {
+            containerEl = document.getElementById(`video-${userId}`);
+        }
+
+        if (!containerEl) return;
+
+        // ── Letter badge overlay ──
+        let badge = containerEl.querySelector('.word3-letter-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'word3-letter-badge';
+            containerEl.style.position = 'relative';
+            containerEl.appendChild(badge);
+        }
+
+        if (pred.didBackspace) {
+            // Flash backspace indicator
+            badge.textContent = '⌫';
+            badge.style.display = 'block';
+            badge.style.background = '#f44336';
+        } else if (pred.isSwiping) {
+            badge.textContent = '←';
+            badge.style.display = 'block';
+            badge.style.background = '#ff5722';
+        } else if (pred.letter) {
+            badge.textContent = pred.letter;
+            badge.style.display = 'block';
+            // Colour based on hold progress
+            const pct = Math.round(pred.holdProgress * 100);
+            if (pct >= 100) {
+                badge.style.background = '#34a853';
+            } else if (pct >= 50) {
+                badge.style.background = '#ff9800';
+            } else {
+                badge.style.background = 'rgba(102,126,234,0.85)';
+            }
+        } else {
+            badge.style.display = 'none';
+        }
+
+        // ── Word + Sentence overlay (bottom of video) ──
+        let wordOverlay = containerEl.querySelector('.word3-word-overlay');
+        if (!wordOverlay) {
+            wordOverlay = document.createElement('div');
+            wordOverlay.className = 'word3-word-overlay';
+            containerEl.appendChild(wordOverlay);
+        }
+
+        const wordText = pred.currentWord || '';
+        const sentText = pred.sentence || '';
+        const display = sentText ? `${sentText} ${wordText}` : wordText;
+        if (display) {
+            wordOverlay.textContent = display;
+            wordOverlay.style.display = 'block';
+        } else {
+            wordOverlay.style.display = 'none';
+        }
+
+        // ── Hand keypoint canvas overlay ──
+        if (pred.handLandmarks && pred.handLandmarks.length > 0) {
+            let kpCanvas = containerEl.querySelector('.word3-keypoint-canvas');
+            if (!kpCanvas) {
+                kpCanvas = document.createElement('canvas');
+                kpCanvas.className = 'word3-keypoint-canvas';
+                containerEl.appendChild(kpCanvas);
+            }
+
+            // Size canvas to match container
+            const rect = containerEl.getBoundingClientRect();
+            kpCanvas.width = rect.width;
+            kpCanvas.height = rect.height;
+            kpCanvas.style.display = 'block';
+
+            const kpCtx = kpCanvas.getContext('2d');
+            kpCtx.clearRect(0, 0, kpCanvas.width, kpCanvas.height);
+
+            // Draw each hand's landmarks
+            for (const hand of pred.handLandmarks) {
+                const lm = hand.landmarks;  // Array of [x, y] in original frame coords
+                if (!lm || lm.length < 21) continue;
+
+                // Scale landmarks from original frame (640x480) to canvas
+                // The backend flips the frame, coordinates are already mirrored
+                const scaleX = kpCanvas.width / 640;
+                const scaleY = kpCanvas.height / 480;
+
+                const scaled = lm.map(p => [p[0] * scaleX, p[1] * scaleY]);
+
+                // Hand connections from word3.py
+                const connections = [
+                    [2, 3], [3, 4], [5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12],
+                    [13, 14], [14, 15], [15, 16], [17, 18], [18, 19], [19, 20],
+                    [0, 1], [1, 2], [2, 5], [5, 9], [9, 13], [13, 17], [17, 0]
+                ];
+
+                const color = hand.label === 'Right' ? '#00BFFF' : '#FF6347';
+
+                // Draw connections
+                kpCtx.strokeStyle = color;
+                kpCtx.lineWidth = 2;
+                for (const [a, b] of connections) {
+                    kpCtx.beginPath();
+                    kpCtx.moveTo(scaled[a][0], scaled[a][1]);
+                    kpCtx.lineTo(scaled[b][0], scaled[b][1]);
+                    kpCtx.stroke();
+                }
+
+                // Draw landmark points
+                for (let i = 0; i < scaled.length; i++) {
+                    const r = [4, 8, 12, 16, 20].includes(i) ? 5 : 3;
+                    kpCtx.beginPath();
+                    kpCtx.arc(scaled[i][0], scaled[i][1], r, 0, 2 * Math.PI);
+                    kpCtx.fillStyle = 'white';
+                    kpCtx.fill();
+                    kpCtx.strokeStyle = 'black';
+                    kpCtx.lineWidth = 1;
+                    kpCtx.stroke();
+                }
+            }
+        } else {
+            // No hands — hide canvas
+            const kpCanvas = containerEl.querySelector('.word3-keypoint-canvas');
+            if (kpCanvas) kpCanvas.style.display = 'none';
+        }
+    }
+
+    start() {
+        if (this.isActive || !this.websocket) return;
+
+        const videoTrack = this.agoraManager?.localTracks?.[1];
+        if (!videoTrack) {
+            console.error('Cannot start Word3: No video track');
+            return;
+        }
+
+        this.isActive = true;
+
+        if (this.videoElement) {
+            this.videoElement.srcObject = null;
+            this.videoElement = null;
+        }
+
+        // Capture frames at ~10 FPS (word3 is single-frame, doesn't need 15)
+        this.frameInterval = setInterval(() => {
+            this.captureAndSendFrame();
+        }, 100);
+
+        console.log('Word3 sign language started (10 FPS)');
+    }
+
+    stop() {
+        if (!this.isActive) return;
+        this.isActive = false;
+
+        if (this.frameInterval) {
+            clearInterval(this.frameInterval);
+            this.frameInterval = null;
+        }
+
+        if (this.videoElement) {
+            this.videoElement.srcObject = null;
+            this.videoElement = null;
+        }
+
+        // Clean up overlays
+        document.querySelectorAll('.word3-letter-badge, .word3-word-overlay, .word3-keypoint-canvas').forEach(el => {
+            el.style.display = 'none';
+        });
+
+        this.predictions.clear();
+
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(JSON.stringify({ type: 'reset' }));
+        }
+
+        console.log('Word3 sign language stopped');
+    }
+
+    captureAndSendFrame() {
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) return;
+
+        try {
+            const videoTrack = this.agoraManager?.localTracks?.[1];
+            if (!videoTrack) return;
+
+            if (!this.videoElement) {
+                const mediaStreamTrack = videoTrack.getMediaStreamTrack();
+                if (!mediaStreamTrack) return;
+
+                this.videoElement = document.createElement('video');
+                this.videoElement.srcObject = new MediaStream([mediaStreamTrack]);
+                this.videoElement.autoplay = true;
+                this.videoElement.playsInline = true;
+                this.videoElement.muted = true;
+                this.videoElement.play().catch(err => console.error('Word3 video play error:', err));
+            }
+
+            if (this.videoElement.videoWidth === 0 || this.videoElement.videoHeight === 0) return;
+
+            this.canvas.width = 640;
+            this.canvas.height = 480;
+            this.ctx.drawImage(this.videoElement, 0, 0, 640, 480);
+
+            const frameData = this.canvas.toDataURL('image/jpeg', 0.6);
+            this.websocket.send(JSON.stringify({
+                type: 'video_frame',
+                frame: frameData
+            }));
+
+        } catch (error) {
+            console.error('Word3 capture error:', error);
         }
     }
 
