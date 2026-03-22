@@ -113,9 +113,12 @@
 
         <div class="col-md-4">
             <!-- Pending Requests Section -->
-            <div class="card mb-3 fade-in" style="animation-delay:.4s" data-pending-count="{{ pending_requests|length }}">
+            <div class="card mb-3 fade-in" style="animation-delay:.4s"
+                data-pending-count="{{ pending_requests|length }}">
                 <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
-                    <h5 class="mb-0 fw-bold"><i class="fas fa-user-plus me-2 text-warning"></i>Pending <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;" id="pending-badge">0</span></h5>
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-user-plus me-2 text-warning"></i>Pending <span
+                            class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;"
+                            id="pending-badge">0</span></h5>
                 </div>
                 <div class="card-body p-0">
                     {% if pending_requests %}
@@ -202,5 +205,13 @@
         const id = document.getElementById('meetingId').value.trim();
         if (id) window.location.href = `/video/join-meeting/${id}/`;
     }
+    // Set pending requests count from data attribute
+    document.addEventListener('DOMContentLoaded', function () {
+        const card = document.querySelector('[data-pending-count]');
+        if (card) {
+            const count = card.getAttribute('data-pending-count');
+            document.getElementById('pending-badge').textContent = count;
+        }
+    });
 </script>
 {% endblock %}

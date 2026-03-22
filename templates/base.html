@@ -145,6 +145,27 @@
             background: rgba(102, 126, 234, 0.7);
         }
 
+        /* Dropdown Menu Styles */
+        .nav-item.dropdown {
+            position: static;
+        }
+
+        .dropdown-menu {
+            position: absolute !important;
+            top: 100% !important;
+            z-index: 1050;
+            min-width: 200px;
+        }
+
+        .dropdown-menu-end {
+            right: 0 !important;
+            left: auto !important;
+        }
+
+        .navbar-collapse {
+            overflow: visible !important;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .card {
@@ -193,14 +214,14 @@
                             <i class="fas fa-user-circle me-1"></i>
                             {{ user.email }}
                         </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{% url 'complete_profile' %}">
                                     <i class="fas fa-user-edit me-2"></i>Edit Profile
                                 </a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li><a class="dropdown-item" href="{% url 'logout' %}">
+                            <li><a class="dropdown-item text-danger" href="{% url 'logout' %}">
                                     <i class="fas fa-sign-out-alt me-2"></i>Logout
                                 </a></li>
                         </ul>
