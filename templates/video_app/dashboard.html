@@ -79,26 +79,26 @@
                 <div class="card-body px-0 pt-0">
                     {% if hosted_meetings or participant_meetings %}
                     {% for meeting in hosted_meetings %}
+                    {% with title_val=meeting.title %}
                     <div class="meeting-list-item">
                         <div>
-                            <h6><i class="fas fa-crown me-1 text-warning" style="font-size:0.7rem"></i> {{
-                                meeting.title|default:meeting.room_id }}</h6>
+                            <h6><i class="fas fa-crown me-1 text-warning" style="font-size:0.7rem"></i> {{ title_val }}
+                            </h6>
                             <small>ID: {{ meeting.room_id }} &bull; Hosted by you</small>
                         </div>
                         <a href="{% url 'meeting_room' meeting.room_id %}" class="btn btn-primary btn-sm">
-                            <i class="fas fa-sign-in-alt me-1"></i>Join
-                        </a>
+                            <i class="fas fa-sign-in-alt me-1"></i>Join</a>
                     </div>
+                    {% endwith %}
                     {% endfor %}
                     {% for p in participant_meetings %}
                     <div class="meeting-list-item">
                         <div>
-                            <h6>{{ p.meeting.title|default:p.meeting.room_id }}</h6>
+                            <h6>{{ p.meeting.title }}</h6>
                             <small>ID: {{ p.meeting.room_id }} &bull; Host: {{ p.meeting.host.email }}</small>
                         </div>
                         <a href="{% url 'meeting_room' p.meeting.room_id %}" class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-sign-in-alt me-1"></i>Join
-                        </a>
+                            <i class="fas fa-sign-in-alt me-1"></i>Join</a>
                     </div>
                     {% endfor %}
                     {% else %}
@@ -113,13 +113,9 @@
 
         <div class="col-md-4">
             <!-- Pending Requests Section -->
-            <div class="card mb-3 fade-in" style="animation-delay:.4s">
+            <div class="card mb-3 fade-in" style="animation-delay:.4s" data-pending-count="{{ pending_requests|length }}">
                 <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
-                    <h5 class="mb-0 fw-bold">
-                        <i class="fas fa-user-plus me-2 text-warning"></i>Pending
-                        <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;">{{
-                            pending_requests.count|default:0 }}</span>
-                    </h5>
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-user-plus me-2 text-warning"></i>Pending <span class="badge bg-warning text-dark ms-2" style="font-size:0.7rem;border-radius:8px;" id="pending-badge">0</span></h5>
                 </div>
                 <div class="card-body p-0">
                     {% if pending_requests %}

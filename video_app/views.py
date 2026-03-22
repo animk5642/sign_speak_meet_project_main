@@ -15,7 +15,10 @@ from .forms import MeetingRoomForm
 def dashboard(request):
     # Get user's meetings and pending requests
     hosted_meetings = MeetingRoom.objects.filter(host=request.user)
-    participant_meetings = MeetingParticipant.objects.filter(user=request.user, status='approved')
+    participant_meetings = MeetingParticipant.objects.filter(
+        user=request.user,
+        status='approved'
+    ).exclude(meeting__host=request.user)  # Exclude meetings hosted by the user to prevent duplicates
     
     # Get pending requests for meetings hosted by current user
     pending_requests = JoinRequest.objects.filter(
@@ -360,4 +363,3 @@ def proxy_hpc_health(request):
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception:
         return JsonResponse({'status': 'unreachable', 'success': False}, status=502)
-

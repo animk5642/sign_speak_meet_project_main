@@ -171,8 +171,7 @@
                             <div class="card h-100 meeting-card">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <h6 class="card-title text-truncate mb-0">{{
-                                            meeting.title|default:meeting.room_id }}</h6>
+                                        <h6 class="card-title text-truncate mb-0">{{ meeting.title }}</h6>
                                         <span class="badge bg-success">Active</span>
                                     </div>
                                     <p class="card-text text-muted small">{{ meeting.description|default:"No
@@ -237,8 +236,7 @@
                         <div class="col-md-6 col-lg-4 mb-4">
                             <div class="card h-100">
                                 <div class="card-body">
-                                    <h6 class="card-title">{{
-                                        participant.meeting.title|default:participant.meeting.room_id }}</h6>
+                                    <h6 class="card-title">{{ participant.meeting.title }}</h6>
                                     <p class="card-text text-muted small">{{ participant.meeting.description|default:"No
                                         description" }}</p>
                                     <div class="meeting-info mb-3">
