@@ -1,0 +1,24 @@
+# Requirements for word3.py - Hand Gesture Recognition with Swipe Detection
+# This file contains all dependencies needed for word3.py to run perfectly
+# Generated from actual .venv environment (Python 3.10.12)
+
+# Core Computer Vision
+opencv-python==4.8.1.78
+opencv-contrib-python==4.11.0.86
+
+# MediaPipe for hand landmark detection
+mediapipe==0.10.14
+
+# Numerical Computing
+numpy==1.26.4
+
+# Image Processing
+Pillow==12.1.1
+
+# Visualization and debugging
+matplotlib==3.10.8
+
+# Optional: Machine Learning (if needed for training)
+tensorflow-cpu==2.15.1
+keras==2.15.0
+scikit-learn==1.7.2
