@@ -9,8 +9,6 @@ import copy
 import time
 import base64
 import itertools
-from collections import deque
-from enum import Enum, auto
 import numpy as np
 import cv2
 import mediapipe as mp
@@ -20,41 +18,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── Swipe config — tuned for fast, responsive backspace ──────────────────────
-SWIPE_HISTORY_FRAMES    = 5       # very few frames = near-instant trigger
-SWIPE_MIN_DISTANCE_PX   = 35      # short swipe still counts
-SWIPE_MAX_VERTICAL_PX   = 80      # very forgiving vertical tolerance
-SWIPE_MIN_VELOCITY_PX   = 8       # low velocity threshold
-SWIPE_CONSISTENCY_RATIO = 0.50    # half the frames moving left is enough
-SWIPE_MIN_TIME_SEC      = 0.03    # nearly instant swipes accepted
-SWIPE_MAX_TIME_SEC      = 1.50
-SWIPE_MIN_R2            = 0.50    # relaxed linearity
-SWIPE_COOLDOWN_SEC      = 0.35    # rapid repeated backspaces
+# ── Swipe config — dead simple: any small left movement = backspace ───────────
+SWIPE_MIN_LEFT_PX  = 6        # Just 6px leftward motion at 320×240 triggers backspace
+SWIPE_COOLDOWN_SEC = 0.30     # Cooldown between backspaces to prevent rapid-fire
 
 LEFT_HAND_LABEL  = "Left"
 RIGHT_HAND_LABEL = "Right"
 TRACK_LANDMARKS  = [0, 5, 9, 13, 17, 8]  # wrist + 4 knuckles + index tip
 
 
-class SwipeState(Enum):
-    IDLE     = auto()
-    TRACKING = auto()
-    COOLDOWN = auto()
-
-
 class BackspaceSwipeDetector:
     """
     Watches ONLY the physical left hand.
-    Fires True when a LEFTWARD swipe (negative dx) is confirmed.
-    Ported directly from word3.py.
+    Fires True when ANY small leftward motion is detected — dead simple.
+    No state machine, no smoothing, no linearity checks.
     """
 
     def __init__(self):
-        self.history: deque = deque(maxlen=SWIPE_HISTORY_FRAMES)
-        self.timestamps: deque = deque(maxlen=SWIPE_HISTORY_FRAMES)
-        self.state: SwipeState = SwipeState.IDLE
+        self.prev_x: float = None
         self.last_fire_t: float = 0.0
-        self._start_t: float = None
+        self._tracking: bool = False
 
     @staticmethod
     def tracking_point_px(hand_landmarks, fw, fh):
@@ -62,105 +45,41 @@ class BackspaceSwipeDetector:
         ys = [hand_landmarks.landmark[i].y for i in TRACK_LANDMARKS]
         return (int(np.mean(xs) * fw), int(np.mean(ys) * fh))
 
-    @staticmethod
-    def _median_smooth(history):
-        pts = list(history)
-        if len(pts) < 3:
-            return pts
-        result = [pts[0]]
-        for i in range(1, len(pts) - 1):
-            mx = int(np.median([pts[i-1][0], pts[i][0], pts[i+1][0]]))
-            my = int(np.median([pts[i-1][1], pts[i][1], pts[i+1][1]]))
-            result.append((mx, my))
-        result.append(pts[-1])
-        return result
-
-    @staticmethod
-    def _linear_r2(xs):
-        n = len(xs)
-        if n < 3:
-            return 0.0
-        t = np.arange(n, dtype=float)
-        x = np.array(xs, dtype=float)
-        coeffs = np.polyfit(t, x, 1)
-        x_fit = np.polyval(coeffs, t)
-        ss_res = np.sum((x - x_fit) ** 2)
-        ss_tot = np.sum((x - np.mean(x)) ** 2)
-        return 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
-
     def update(self, point_px: tuple) -> bool:
-        """Feed one point from the LEFT hand. Returns True on confirmed left-swipe."""
+        """Feed one point from the LEFT hand. Returns True on leftward swipe."""
         now = time.time()
-        self.history.append(point_px)
-        self.timestamps.append(now)
+        cur_x = point_px[0]
 
-        if self.state == SwipeState.COOLDOWN:
-            if (now - self.last_fire_t) >= SWIPE_COOLDOWN_SEC:
-                self.state = SwipeState.IDLE
+        # Cooldown — prevent rapid-fire
+        if (now - self.last_fire_t) < SWIPE_COOLDOWN_SEC:
+            self.prev_x = cur_x
             return False
 
-        if self.state == SwipeState.IDLE:
-            if len(self.history) >= 3:
-                recent_dx = self.history[-1][0] - self.history[-3][0]
-                if recent_dx <= -SWIPE_MIN_VELOCITY_PX:
-                    self.state = SwipeState.TRACKING
-                    self._start_t = self.timestamps[-3]
+        # First frame — just store position
+        if self.prev_x is None:
+            self.prev_x = cur_x
             return False
 
-        if self.state == SwipeState.TRACKING:
-            if (now - self._start_t) > SWIPE_MAX_TIME_SEC:
-                self._reset_to_idle()
-                return False
-            if self._evaluate():
-                self.last_fire_t = now
-                self.state = SwipeState.COOLDOWN
-                self.history.clear()
-                self.timestamps.clear()
-                return True
+        dx = cur_x - self.prev_x  # negative = leftward
+        self.prev_x = cur_x
 
+        # Any leftward motion beyond threshold = backspace
+        if dx <= -SWIPE_MIN_LEFT_PX:
+            self._tracking = True
+            self.last_fire_t = now
+            return True
+
+        self._tracking = False
         return False
 
-    def _evaluate(self) -> bool:
-        smoothed = self._median_smooth(self.history)
-        if len(smoothed) < SWIPE_HISTORY_FRAMES:
-            return False
-
-        xs = [p[0] for p in smoothed]
-        ys = [p[1] for p in smoothed]
-
-        net_dx = xs[-1] - xs[0]
-        net_dy = max(ys) - min(ys)
-
-        if net_dx > -SWIPE_MIN_DISTANCE_PX:
-            return False
-        if net_dy > SWIPE_MAX_VERTICAL_PX:
-            return False
-        step_dx = [xs[i+1] - xs[i] for i in range(len(xs)-1)]
-        if max(abs(d) for d in step_dx) < SWIPE_MIN_VELOCITY_PX:
-            return False
-        same_dir = sum(1 for d in step_dx if d < 0)
-        if same_dir / len(step_dx) < SWIPE_CONSISTENCY_RATIO:
-            return False
-        elapsed = self.timestamps[-1] - self._start_t
-        if elapsed < SWIPE_MIN_TIME_SEC or elapsed > SWIPE_MAX_TIME_SEC:
-            return False
-        if self._linear_r2(xs) < SWIPE_MIN_R2:
-            return False
-
-        return True
-
-    def _reset_to_idle(self):
-        self.state = SwipeState.IDLE
-        self._start_t = None
-
     def reset(self):
-        self.history.clear()
-        self.timestamps.clear()
-        self._reset_to_idle()
+        self.prev_x = None
+        self._tracking = False
 
     @property
     def tracking(self):
-        return self.state == SwipeState.TRACKING
+        return self._tracking
+
 
 
 class Word3Detector:
