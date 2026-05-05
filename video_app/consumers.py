@@ -301,6 +301,7 @@ class Word3Consumer(AsyncWebsocketConsumer):
                 prediction = await self.process_frame(frame_data)
 
                 if prediction:
+                    # Broadcast prediction to all users (landmarks stripped for speed)
                     await self.channel_layer.group_send(
                         self.room_group_name,
                         {
@@ -311,7 +312,6 @@ class Word3Consumer(AsyncWebsocketConsumer):
                             'hold_progress': prediction['hold_progress'],
                             'current_word': prediction['current_word'],
                             'sentence': prediction['sentence'],
-                            'hand_landmarks': prediction['hand_landmarks'],
                             'did_backspace': prediction.get('did_backspace', False),
                             'is_swiping': prediction.get('is_swiping', False),
                         }
@@ -350,7 +350,6 @@ class Word3Consumer(AsyncWebsocketConsumer):
             'hold_progress': event['hold_progress'],
             'current_word': event['current_word'],
             'sentence': event['sentence'],
-            'hand_landmarks': event['hand_landmarks'],
             'did_backspace': event.get('did_backspace', False),
             'is_swiping': event.get('is_swiping', False),
         }))

@@ -843,6 +843,7 @@ class Word3SignLanguageManager {
         this.websocket = null;
         this.isActive = false;
         this.frameInterval = null;
+        this.pendingFrame = false; // Frame gating: skip capture if previous in-flight
         this.predictions = new Map(); // userId -> prediction data
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -876,6 +877,9 @@ class Word3SignLanguageManager {
 
     handleMessage(data) {
         if (data.type === 'word3_prediction') {
+            // Release frame gate — server responded, ready for next frame
+            this.pendingFrame = false;
+
             // Update prediction for this user
             this.predictions.set(data.user_id, {
                 username: data.username,
@@ -883,7 +887,7 @@ class Word3SignLanguageManager {
                 holdProgress: data.hold_progress,
                 currentWord: data.current_word,
                 sentence: data.sentence,
-                handLandmarks: data.hand_landmarks,
+                handLandmarks: data.hand_landmarks || [],
                 didBackspace: data.did_backspace || false,
                 isSwiping: data.is_swiping || false,
                 timestamp: Date.now()
@@ -902,6 +906,7 @@ class Word3SignLanguageManager {
 
         } else if (data.type === 'error') {
             console.error('Word3 error:', data.message);
+            this.pendingFrame = false; // Release gate on error too
         }
     }
 
@@ -991,7 +996,7 @@ class Word3SignLanguageManager {
             const rect = containerEl.getBoundingClientRect();
             kpCanvas.width = rect.width;
             kpCanvas.height = rect.height;
-            kpCanvas.style.display = 'block';
+            kpCanvas.style.display = 'none'; // Hide keypoint visualization
 
             const kpCtx = kpCanvas.getContext('2d');
             kpCtx.clearRect(0, 0, kpCanvas.width, kpCanvas.height);
@@ -1056,18 +1061,21 @@ class Word3SignLanguageManager {
         }
 
         this.isActive = true;
+        this.pendingFrame = false;
 
         if (this.videoElement) {
             this.videoElement.srcObject = null;
             this.videoElement = null;
         }
 
-        // Capture frames at ~10 FPS (word3 is single-frame, doesn't need 15)
+        // Capture frames at ~12.5 FPS with frame gating (skip if previous still processing)
         this.frameInterval = setInterval(() => {
-            this.captureAndSendFrame();
-        }, 100);
+            if (!this.pendingFrame) {
+                this.captureAndSendFrame();
+            }
+        }, 80);
 
-        console.log('Word3 sign language started (10 FPS)');
+        console.log('Word3 sign language started (12.5 FPS, frame-gated)');
     }
 
     stop() {
@@ -1119,11 +1127,20 @@ class Word3SignLanguageManager {
 
             if (this.videoElement.videoWidth === 0 || this.videoElement.videoHeight === 0) return;
 
-            this.canvas.width = 640;
-            this.canvas.height = 480;
-            this.ctx.drawImage(this.videoElement, 0, 0, 640, 480);
+            // Optimized: 320x240 resolution (3-4x faster MediaPipe processing)
+            this.canvas.width = 320;
+            this.canvas.height = 240;
 
-            const frameData = this.canvas.toDataURL('image/jpeg', 0.6);
+            // Client-side horizontal flip (GPU-accelerated, removes cv2.flip on server)
+            this.ctx.save();
+            this.ctx.scale(-1, 1);
+            this.ctx.drawImage(this.videoElement, -320, 0, 320, 240);
+            this.ctx.restore();
+
+            // Lower quality = smaller payload (~12KB vs ~40KB)
+            const frameData = this.canvas.toDataURL('image/jpeg', 0.45);
+
+            this.pendingFrame = true;
             this.websocket.send(JSON.stringify({
                 type: 'video_frame',
                 frame: frameData

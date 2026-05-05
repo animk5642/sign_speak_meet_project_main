@@ -170,7 +170,7 @@ class Word3Detector:
     """
 
     def __init__(self, model_path: str, labels_path: str,
-                 letter_hold_sec: float = 1.0, word_break_sec: float = 2.0):
+                 letter_hold_sec: float = 0.6, word_break_sec: float = 1.3):
         self.letter_hold_sec = letter_hold_sec
         self.word_break_sec = word_break_sec
 
@@ -207,13 +207,14 @@ class Word3Detector:
             logger.error(f"Failed to load word3 labels: {e}")
             raise
 
-        # Initialize MediaPipe Hands
+        # Initialize MediaPipe Hands (optimized for speed)
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=2,
-            min_detection_confidence=0.7,
+            min_detection_confidence=0.5,   # Lower = faster detection (0.5 is MediaPipe default)
             min_tracking_confidence=0.5,
+            model_complexity=0,              # Lighter palm detection model
         )
 
         logger.info("Word3 detector initialized successfully")
@@ -267,8 +268,12 @@ class Word3Detector:
 
             h, w = frame.shape[:2]
 
-            # Flip horizontally (mirror) — word3.py does this
-            frame = cv2.flip(frame, 1)
+            # Resize to 320x240 if client sent a larger frame (safety net)
+            if w > 320 or h > 240:
+                frame = cv2.resize(frame, (320, 240), interpolation=cv2.INTER_NEAREST)
+                h, w = 240, 320
+
+            # NOTE: cv2.flip removed — client now sends pre-flipped frames
 
             # Convert to RGB for MediaPipe
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -289,12 +294,7 @@ class Word3Detector:
                 for lm, hd in zip(results.multi_hand_landmarks,
                                    results.multi_handedness):
                     label = hd.classification[0].label
-                    # Build landmark data for ALL hands (for visualization)
-                    landmark_list = self.calc_landmark_list(w, h, lm)
-                    hand_landmarks_data.append({
-                        'label': label,
-                        'landmarks': landmark_list,
-                    })
+                    # Skip building landmark visualization data — client canvas is hidden
                     if label == LEFT_HAND_LABEL:
                         left_lm = lm
                     else:

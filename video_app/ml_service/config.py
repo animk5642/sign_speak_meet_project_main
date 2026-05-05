@@ -22,9 +22,9 @@ SEQUENCE_LENGTH = 30  # Number of frames needed for prediction
 CONFIDENCE_THRESHOLD = 0.7  # Minimum confidence for displaying predictions
 FRAME_SKIP = 2  # Process every N frames to reduce load
 
-# Word3 parameters
-WORD3_LETTER_HOLD_SEC = 1.0   # Seconds to hold a letter before it registers
-WORD3_WORD_BREAK_SEC = 2.0    # Seconds without hands = space (word break)
+# Word3 parameters (optimized for low latency)
+WORD3_LETTER_HOLD_SEC = 0.6   # Seconds to hold a letter before it registers (was 1.0)
+WORD3_WORD_BREAK_SEC = 1.3    # Seconds without hands = space (was 2.0)
 
 # MediaPipe parameters
 MIN_DETECTION_CONFIDENCE = 0.5
